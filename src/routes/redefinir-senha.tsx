@@ -9,8 +9,8 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/redefinir-senha")({
   head: () => ({
     meta: [
-      { title: "Definir senha · Encantômetro" },
-      { name: "description", content: "Defina sua senha de acesso ao Encantômetro." },
+      { title: "Definir senha · Por trás da Magia" },
+      { name: "description", content: "Defina sua senha de acesso ao Por trás da Magia." },
     ],
   }),
   component: RedefinirSenhaPage,
@@ -80,7 +80,7 @@ function RedefinirSenhaPage() {
             Definir senha
           </h1>
           <p className="mt-3 max-w-[300px] text-[14px] leading-relaxed text-white/75">
-            Escolha a senha que vai usar daqui pra frente pra entrar no Encantômetro.
+            Escolha a senha que vai usar daqui pra frente pra entrar no Por trás da Magia.
           </p>
         </div>
 
@@ -137,7 +137,7 @@ function RedefinirSenhaPage() {
         </form>
 
         <p className="mt-auto pt-10 text-center text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
-          Hector Studios · Encantômetro
+          Hector Studios · Por trás da Magia
         </p>
       </main>
     </LiquidBackground>

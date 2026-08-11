@@ -18,6 +18,7 @@ import {
   saveScore,
   savePdi,
   updateEvaluationStatus,
+  saveEvaluationSpirits,
   getEvaluationDashboard,
   listEvaluationDocuments,
   attachEvaluationDocument,
@@ -209,7 +210,7 @@ function EvaluationsPage() {
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <div className="min-w-0">
-            <div className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-white/55">Encantômetro</div>
+            <div className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-white/55">Por trás da Magia</div>
             <h1 className="font-display text-[24px] font-black tracking-[-0.03em]">Avaliação de Desempenho</h1>
             <p className="text-[12.5px] text-white/65">
               Olá {profile?.full_name?.split(" ")[0] ?? "elenco"} — sua jornada de evolução mágica.
@@ -646,6 +647,26 @@ function IndicatorsSection() {
         </div>
       </div>
 
+      {d.spirits && d.spirits.some((s: any) => s.count > 0) && (
+        <div className="mt-5">
+          <h3 className="mb-2 flex items-center gap-1 text-[13px] font-semibold uppercase tracking-[0.12em] text-white/70">
+            <Sparkles className="h-4 w-4" /> Espírito mágico — média do ciclo
+          </h3>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {d.spirits.map((s: any) => (
+              <div key={s.key} className="glass-chip rounded-2xl p-3 text-center">
+                <div className="font-display text-[22px] font-black text-white">
+                  {s.avg != null ? s.avg : "—"}
+                  <span className="text-[12px] font-normal text-white/50">/3</span>
+                </div>
+                <div className="mt-0.5 text-[11.5px] text-white/70">{s.label}</div>
+                <div className="text-[10px] text-white/40">{s.count} avaliações</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-5">
         <div className="mb-2 flex items-center justify-between">
           <h3 className="flex items-center gap-1 text-[13px] font-semibold uppercase tracking-[0.12em] text-white/70">
@@ -722,6 +743,13 @@ function EvaluationDetail({ id, onBack }: { id: string; onBack: () => void }) {
     onError: (e: any) => toast.error(e.message),
   });
 
+  const saveSpiritsFn = useServerFn(saveEvaluationSpirits);
+  const spiritsMut = useMutation({
+    mutationFn: (patch: Record<string, string>) => saveSpiritsFn({ data: { evaluation_id: id, ...patch } as any }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["eval", id] }),
+    onError: (e: any) => toast.error(e.message),
+  });
+
   const pillars = meta.data?.pillars ?? [];
   const comps = meta.data?.competencies ?? [];
   const ev = d.data?.evaluation as any;
@@ -779,6 +807,8 @@ function EvaluationDetail({ id, onBack }: { id: string; onBack: () => void }) {
             </Card>
 
             <ScaleHelp />
+
+            <SpiritSection evaluation={ev} onSet={(key, value) => spiritsMut.mutate({ [key]: value })} />
 
             {pillars.map((p: any) => (
               <PillarSection
@@ -883,6 +913,61 @@ function ScaleHelp() {
   );
 }
 
+const SPIRIT_FIELDS = [
+  { key: "spirit_amar", label: "Amar" },
+  { key: "spirit_honrar", label: "Honrar" },
+  { key: "spirit_verdadeiro", label: "Ser verdadeiro" },
+  { key: "spirit_justo", label: "Ser justo" },
+  { key: "spirit_servir", label: "Servir" },
+] as const;
+
+const SPIRIT_LEVELS = [
+  { value: "abaixo", label: "Abaixo" },
+  { value: "no_esperado", label: "No esperado" },
+  { value: "acima", label: "Acima" },
+] as const;
+
+function SpiritSection({
+  evaluation,
+  onSet,
+}: {
+  evaluation: any;
+  onSet: (key: string, value: string) => void;
+}) {
+  return (
+    <Card>
+      <SectionHeader icon={Sparkles} title="Espírito mágico" />
+      <p className="mb-3 text-[12px] text-white/65">
+        Como a pessoa vive cada um dos 5 pontos do espírito Hector Studios.
+      </p>
+      <div className="grid gap-2.5">
+        {SPIRIT_FIELDS.map(({ key, label }) => {
+          const current = evaluation?.[key] ?? null;
+          return (
+            <div key={key} className="glass-chip rounded-2xl p-3">
+              <div className="mb-2 text-[13px] font-semibold text-white">{label}</div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {SPIRIT_LEVELS.map((lvl) => (
+                  <button
+                    key={lvl.value}
+                    onClick={() => onSet(key, lvl.value)}
+                    className={cn(
+                      "rounded-xl px-2 py-2 text-[12px] font-semibold transition",
+                      current === lvl.value ? "bg-brand-grad text-white shadow-glow" : "bg-white/10 text-white/75 hover:bg-white/15",
+                    )}
+                  >
+                    {lvl.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 function PillarSection({
   pillar,
   comps,
@@ -964,33 +1049,59 @@ function CompetencyRow({ comp, current, onScore }: { comp: any; current: number;
 /*  PDIs                                                               */
 /* ------------------------------------------------------------------ */
 
+const PDI_STATUS_LABEL: Record<string, string> = {
+  aberto: "Aberto",
+  em_andamento: "Em andamento",
+  concluido: "Concluído",
+  cancelado: "Cancelado",
+};
+
 function PdiSection({ evaluationId, pdis, comps }: { evaluationId: string; pdis: any[]; comps: any[] }) {
   const qc = useQueryClient();
   const savePdiFn = useServerFn(savePdi);
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [objective, setObjective] = useState("");
   const [actions, setActions] = useState("");
   const [due, setDue] = useState("");
   const [competencyId, setCompetencyId] = useState("");
+  const [status, setStatus] = useState("aberto");
+
+  function openNew() {
+    setEditingId(null);
+    setObjective("");
+    setActions("");
+    setDue("");
+    setCompetencyId("");
+    setStatus("aberto");
+    setOpen(true);
+  }
+
+  function openEdit(p: any) {
+    setEditingId(p.id);
+    setObjective(p.objective ?? "");
+    setActions(p.actions ?? "");
+    setDue(p.due_on ?? "");
+    setCompetencyId(p.competency_id ?? "");
+    setStatus(p.status ?? "aberto");
+    setOpen(true);
+  }
 
   const mut = useMutation({
     mutationFn: () =>
       savePdiFn({
         data: {
+          id: editingId ?? undefined,
           evaluation_id: evaluationId,
           objective,
           actions: actions || undefined,
           due_on: due || undefined,
           competency_id: competencyId || undefined,
-          status: "aberto",
+          status: status as "aberto" | "em_andamento" | "concluido" | "cancelado",
         },
       }),
     onSuccess: () => {
-      toast.success("PDI salvo");
-      setObjective("");
-      setActions("");
-      setDue("");
-      setCompetencyId("");
+      toast.success(editingId ? "PDI atualizado" : "PDI salvo");
       setOpen(false);
       qc.invalidateQueries({ queryKey: ["eval", evaluationId] });
     },
@@ -1005,31 +1116,50 @@ function PdiSection({ evaluationId, pdis, comps }: { evaluationId: string; pdis:
         icon={Target}
         title="Plano de Desenvolvimento (PDI)"
         action={
-          <button onClick={() => setOpen(true)} className={BTN_CHIP}>
+          <button onClick={openNew} className={BTN_CHIP}>
             <Plus className="h-4 w-4" /> Novo PDI
           </button>
         }
       />
       <div className="space-y-2">
         {pdis.map((p: any) => (
-          <div key={p.id} className="glass-chip rounded-2xl p-3">
+          <button
+            key={p.id}
+            onClick={() => openEdit(p)}
+            className="glass-chip w-full rounded-2xl p-3 text-left transition active:scale-[0.99]"
+          >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <div className="text-sm font-semibold">{p.objective}</div>
                 {p.competency_id && compName.get(p.competency_id) && (
                   <div className="mt-0.5 text-[11px] text-celeste">{compName.get(p.competency_id)}</div>
                 )}
-                {p.actions && <div className="mt-1 text-[12px] text-white/65">{p.actions}</div>}
+                {p.actions ? (
+                  <div className="mt-1 text-[12px] text-white/65">{p.actions}</div>
+                ) : (
+                  <div className="mt-1 text-[12px] text-white/40 italic">Toque pra combinar as ações</div>
+                )}
                 {p.due_on && <div className="mt-1 text-[11px] text-white/50">Prazo: {p.due_on}</div>}
               </div>
-              {p.status === "concluido" && <CheckCircle2 className="h-4 w-4 shrink-0 text-magic-green" />}
+              {p.status === "concluido" ? (
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-magic-green" />
+              ) : (
+                <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-white/70">
+                  {PDI_STATUS_LABEL[p.status] ?? p.status}
+                </span>
+              )}
             </div>
-          </div>
+          </button>
         ))}
         {pdis.length === 0 && <Empty>Nenhum PDI ainda. Combine 1 ou 2 objetivos de desenvolvimento.</Empty>}
       </div>
 
-      <BottomSheetModal open={open} onClose={() => setOpen(false)} title="Novo PDI" description="Objetivo SMART e ações combinadas.">
+      <BottomSheetModal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={editingId ? "Editar PDI" : "Novo PDI"}
+        description="Objetivo SMART e ações combinadas."
+      >
         <div className="grid gap-2">
           <input className={FIELD} placeholder="Objetivo SMART" value={objective} onChange={(e) => setObjective(e.target.value)} />
           <textarea className={cn(FIELD, "min-h-[80px] resize-none")} placeholder="Ações combinadas" value={actions} onChange={(e) => setActions(e.target.value)} />
@@ -1040,8 +1170,15 @@ function PdiSection({ evaluationId, pdis, comps }: { evaluationId: string; pdis:
             ))}
           </select>
           <input type="date" className={FIELD} value={due} onChange={(e) => setDue(e.target.value)} />
+          {editingId && (
+            <select className={FIELD} value={status} onChange={(e) => setStatus(e.target.value)}>
+              {Object.entries(PDI_STATUS_LABEL).map(([value, label]) => (
+                <option key={value} value={value} className="text-blu">{label}</option>
+              ))}
+            </select>
+          )}
           <button onClick={() => mut.mutate()} disabled={!objective || mut.isPending} className={BTN_PRIMARY}>
-            {mut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Adicionar PDI"}
+            {mut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : editingId ? "Salvar alterações" : "Adicionar PDI"}
           </button>
         </div>
       </BottomSheetModal>

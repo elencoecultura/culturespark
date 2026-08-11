@@ -46,6 +46,9 @@ import { submitMood, listMyMoods, sendKudos, listKudos, leaderOverview } from "@
 import { listWeekBirthdays } from "@/lib/birthdays.functions";
 import { getDiscStatus } from "@/lib/disc.functions";
 import Bussola, { BussolaAdmin } from "./Bussola";
+import WellbeingAdmin from "./WellbeingAdmin";
+import { SUPREME_EMAILS } from "@/lib/wellbeing.functions";
+import { HeartCrack } from "lucide-react";
 import { listUsers, createUser, updateUser } from "@/lib/admin.functions";
 import { listWeekSchedule, upsertSchedule, ATTRACTIONS } from "@/lib/schedule.functions";
 import {
@@ -198,7 +201,7 @@ function AppHeader({ name, isAdmin }: { name: string; isAdmin: boolean }) {
   return (
     <header className="mb-4 flex items-center justify-between gap-2">
       <div className="min-w-0">
-        <div className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-white/55">Encantômetro</div>
+        <div className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-white/55">Por trás da Magia</div>
         <div className="truncate font-display text-[15px] font-bold text-white">Oi, {name || "elenco"}</div>
       </div>
       <div className="flex items-center gap-2">
@@ -1994,7 +1997,7 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
   return (
     <>
       <TopBar
-        eyebrow="Encantômetro"
+        eyebrow="Por trás da Magia"
         title="Sua pontuação"
         subtitle="Cada gesto soma. Temporada zera a cada trimestre."
       />
@@ -2113,7 +2116,7 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
 
 /* ---------- Shell ---------- */
 
-type TabId = "home" | "journey" | "feedback" | "schedule" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin";
+type TabId = "home" | "journey" | "feedback" | "schedule" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing";
 
 function BottomNav({
   active,
@@ -2230,21 +2233,28 @@ export default function LinkCulturaApp() {
     }
 
     if (isAdmin) {
-      groups.push({
-        title: "Admin",
-        items: [
-          { id: "broadcast", label: "Enviar recado", icon: Send, desc: "Notificar todo o elenco" },
-          { id: "disc-admin", label: "Bússola do time", icon: Compass, desc: "Perfis comportamentais (quem consentiu)" },
-          { id: "hierarquia", label: "Elenco & Hierarquia", icon: Users, desc: "Definir líder e co-líder de cada pessoa" },
-          { id: "pre-reg", label: "Pré-cadastro", icon: UserPlus, desc: "Importar planilha do elenco" },
-          { id: "cycle", label: "Ciclo da gamificação", icon: Trophy, desc: "Resetar pontos a cada N dias" },
-          { id: "wifi", label: "Rede permitida", icon: Wifi, desc: "Wi-Fi autorizado para login" },
-        ],
-      });
+      const adminItems: { id: TabId; label: string; icon: LucideIcon; desc: string }[] = [
+        { id: "broadcast", label: "Enviar recado", icon: Send, desc: "Notificar todo o elenco" },
+        { id: "disc-admin", label: "Bússola do time", icon: Compass, desc: "Perfis comportamentais (quem consentiu)" },
+        { id: "hierarquia", label: "Elenco & Hierarquia", icon: Users, desc: "Definir líder e co-líder de cada pessoa" },
+        { id: "pre-reg", label: "Pré-cadastro", icon: UserPlus, desc: "Importar planilha do elenco" },
+        { id: "cycle", label: "Ciclo da gamificação", icon: Trophy, desc: "Resetar pontos a cada N dias" },
+        { id: "wifi", label: "Rede permitida", icon: Wifi, desc: "Wi-Fi autorizado para login" },
+      ];
+      const email = (profile as { email?: string | null } | null)?.email?.toLowerCase();
+      if (email && SUPREME_EMAILS.includes(email)) {
+        adminItems.splice(1, 0, {
+          id: "wellbeing",
+          label: "Cuidado com o elenco",
+          icon: HeartCrack,
+          desc: "Quem está com energia baixa há um tempo",
+        });
+      }
+      groups.push({ title: "Admin", items: adminItems });
     }
 
     return groups;
-  }, [isLeader, isAdmin]);
+  }, [isLeader, isAdmin, profile]);
 
   const moreTabs = useMemo(() => moreGroups.flatMap((g) => g.items), [moreGroups]);
 
@@ -2269,6 +2279,7 @@ export default function LinkCulturaApp() {
       case "birthdays": return <BirthdaysScreen myUserId={profile?.id ?? ""} />;
       case "bussola": return <Bussola name={name} />;
       case "disc-admin": return <BussolaAdmin />;
+      case "wellbeing": return <WellbeingAdmin />;
       case "vagas": return <JobsScreen isAdmin={isAdmin} />;
       case "wifi": return <WifiAllowlistScreen />;
       case "pre-reg": return <PreRegistrationsAdmin />;

@@ -52,6 +52,20 @@ export const sendKudos = createServerFn({ method: "POST" })
       category: data.category ?? null,
     });
     if (error) throw new Error(error.message);
+
+    const { data: sender } = await context.supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", context.userId)
+      .maybeSingle();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await supabaseAdmin.from("notifications").insert({
+      user_id: data.to_user,
+      title: "Você recebeu um toque! 💫",
+      body: `${sender?.full_name ?? "Alguém"}: ${data.message}`,
+      created_by: context.userId,
+    });
+
     return { ok: true };
   });
 

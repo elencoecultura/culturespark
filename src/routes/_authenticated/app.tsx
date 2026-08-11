@@ -4,7 +4,7 @@ import LinkCulturaApp from "@/components/link-cultura/LinkCulturaApp";
 export const Route = createFileRoute("/_authenticated/app")({
   head: () => ({
     meta: [
-      { title: "Encantômetro · Hector Studios" },
+      { title: "Por trás da Magia · Hector Studios" },
       {
         name: "description",
         content:

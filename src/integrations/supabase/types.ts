@@ -769,6 +769,7 @@ export type Database = {
           created_by: string | null
           id: string
           title: string
+          user_id: string | null
         }
         Insert: {
           body: string
@@ -776,6 +777,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           title: string
+          user_id?: string | null
         }
         Update: {
           body?: string
@@ -783,6 +785,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           title?: string
+          user_id?: string | null
         }
         Relationships: []
       }

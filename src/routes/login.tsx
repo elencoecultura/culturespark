@@ -11,8 +11,8 @@ import { enforceWifiLock } from "@/lib/wifi.functions";
 export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
-      { title: "Entrar · Encantômetro" },
-      { name: "description", content: "Acesse o Encantômetro da Hector Studios." },
+      { title: "Entrar · Por trás da Magia" },
+      { name: "description", content: "Acesse o Por trás da Magia da Hector Studios." },
     ],
   }),
   component: LoginPage,
@@ -150,7 +150,7 @@ function LoginPage() {
         </button>
 
         <p className="mt-auto pt-10 text-center text-[11px] font-medium uppercase tracking-[0.2em] text-white/40">
-          Hector Studios · Encantômetro
+          Hector Studios · Por trás da Magia
         </p>
       </main>
     </LiquidBackground>

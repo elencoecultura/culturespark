@@ -450,6 +450,32 @@ export const updateEvaluationStatus = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+const spiritLevel = z.enum(["abaixo", "no_esperado", "acima"]);
+
+export const saveEvaluationSpirits = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        evaluation_id: z.string().uuid(),
+        spirit_amar: spiritLevel.optional(),
+        spirit_honrar: spiritLevel.optional(),
+        spirit_verdadeiro: spiritLevel.optional(),
+        spirit_justo: spiritLevel.optional(),
+        spirit_servir: spiritLevel.optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { evaluation_id, ...patch } = data;
+    const { error } = await context.supabase
+      .from("evaluations")
+      .update(patch)
+      .eq("id", evaluation_id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 // ---------- Indicadores / Dashboard ----------
 
 export const getEvaluationDashboard = createServerFn({ method: "GET" })
@@ -476,6 +502,7 @@ export const getEvaluationDashboard = createServerFn({ method: "GET" })
         byAttraction: [],
         byLeader: [],
         byCompetency: [],
+        spirits: [],
       };
     }
 
@@ -487,7 +514,9 @@ export const getEvaluationDashboard = createServerFn({ method: "GET" })
 
     const { data: evals } = await context.supabase
       .from("evaluations")
-      .select("id,evaluatee_id,status,overall_score")
+      .select(
+        "id,evaluatee_id,status,overall_score,spirit_amar,spirit_honrar,spirit_verdadeiro,spirit_justo,spirit_servir",
+      )
       .eq("cycle_id", cycleId);
 
     const evalRows = evals ?? [];
@@ -601,12 +630,34 @@ export const getEvaluationDashboard = createServerFn({ method: "GET" })
       .filter((c: any) => c.count > 0)
       .sort((a: any, b: any) => (a.avg ?? 999) - (b.avg ?? 999));
 
+    // Espírito mágico: abaixo=1, no_esperado=2, acima=3 — média geral do ciclo
+    const SPIRIT_LEVEL: Record<string, number> = { abaixo: 1, no_esperado: 2, acima: 3 };
+    const SPIRITS = [
+      { key: "spirit_amar", label: "Amar" },
+      { key: "spirit_honrar", label: "Honrar" },
+      { key: "spirit_verdadeiro", label: "Ser verdadeiro" },
+      { key: "spirit_justo", label: "Ser justo" },
+      { key: "spirit_servir", label: "Servir" },
+    ];
+    const spirits = SPIRITS.map(({ key, label }) => {
+      const values = evalRows
+        .map((e: any) => SPIRIT_LEVEL[e[key] as string])
+        .filter((v: number | undefined): v is number => typeof v === "number");
+      return {
+        key,
+        label,
+        avg: values.length ? +(values.reduce((a, b) => a + b, 0) / values.length).toFixed(2) : null,
+        count: values.length,
+      };
+    });
+
     return {
       cycle,
       overall: { total, done, pct: total ? Math.round((done / total) * 100) : 0 },
       byAttraction,
       byLeader,
       byCompetency,
+      spirits,
     };
   });
 

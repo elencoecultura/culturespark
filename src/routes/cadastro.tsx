@@ -11,7 +11,7 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/cadastro")({
   head: () => ({
     meta: [
-      { title: "Cadastro · Encantômetro" },
+      { title: "Cadastro · Por trás da Magia" },
       { name: "description", content: "Faça seu cadastro de Herói da Cultura." },
     ],
   }),
