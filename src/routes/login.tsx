@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { Mail, Lock, ArrowRight, Loader2 } from "lucide-react";
 import LiquidBackground from "@/components/link-cultura/LiquidBackground";
-import hectorLogo from "@/assets/hector-logo.png.asset.json";
+import hectorLogo from "@/assets/hector-logo.png";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { enforceWifiLock } from "@/lib/wifi.functions";
@@ -62,7 +62,7 @@ function LoginPage() {
       <main className="relative mx-auto flex min-h-screen w-full max-w-[430px] flex-col px-6 pb-10 pt-14">
         <div className="flex flex-col items-center text-center">
           <img
-            src={hectorLogo.url}
+            src={hectorLogo}
             alt="Hector Studios"
             className="h-20 w-auto"
             style={{ filter: "brightness(0) invert(1)" }}

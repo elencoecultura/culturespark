@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { User, Mail, Lock, Loader2, CheckCircle2, ArrowRight, Sparkles, Building2, Search } from "lucide-react";
 import LiquidBackground from "@/components/link-cultura/LiquidBackground";
-import hectorLogo from "@/assets/hector-logo.png.asset.json";
+import hectorLogo from "@/assets/hector-logo.png";
 import { registerHero } from "@/lib/registration.functions";
 import { lookupPreRegistration, searchPreRegistrations } from "@/lib/pre-registration.functions";
 import { toast } from "sonner";
@@ -134,7 +134,7 @@ function CadastroPage() {
       <main className="relative mx-auto flex min-h-screen w-full max-w-[460px] flex-col px-6 pb-10 pt-12">
         <div className="flex flex-col items-center text-center">
           <img
-            src={hectorLogo.url}
+            src={hectorLogo}
             alt="Hector Studios"
             className="h-16 w-auto"
             style={{ filter: "brightness(0) invert(1)" }}
