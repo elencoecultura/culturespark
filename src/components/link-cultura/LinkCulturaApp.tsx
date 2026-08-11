@@ -2300,7 +2300,7 @@ export default function LinkCulturaApp() {
           onMore={() => setMoreOpen(true)}
         />
         <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
-          <SheetContent side="bottom" className="glass-strong border-white/20 text-white rounded-t-[28px]">
+          <SheetContent side="bottom" className="glass-strong max-h-[85vh] overflow-y-auto border-white/20 text-white rounded-t-[28px]">
             <SheetHeader>
               <SheetTitle className="text-white">Mais</SheetTitle>
             </SheetHeader>
