@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.copy_previous_week(date);

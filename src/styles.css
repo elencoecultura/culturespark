@@ -1,0 +1,175 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Hector Studios brand tokens */
+@theme {
+  --color-papel: #efefea;
+  --color-celeste: #6ad1e3;
+  --color-blu: #1a2891;
+  --color-pink: #e451f5;
+  --color-ink: #071038;
+  --color-muted-ink: #65708a;
+  --color-magic-green: #24d18b;
+  --color-magic-amber: #ffca55;
+  --color-magic-red: #ff5c7a;
+  --font-display: "panel-sans", "Panel", Georgia, serif;
+  --font-sans: "Montserrat", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.129 0.042 264.695);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.129 0.042 264.695);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.129 0.042 264.695);
+  --primary: oklch(0.208 0.042 265.755);
+  --primary-foreground: oklch(0.984 0.003 247.858);
+  --secondary: oklch(0.968 0.007 247.896);
+  --secondary-foreground: oklch(0.208 0.042 265.755);
+  --muted: oklch(0.968 0.007 247.896);
+  --muted-foreground: oklch(0.554 0.046 257.417);
+  --accent: oklch(0.968 0.007 247.896);
+  --accent-foreground: oklch(0.208 0.042 265.755);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.984 0.003 247.858);
+  --border: oklch(0.929 0.013 255.508);
+  --input: oklch(0.929 0.013 255.508);
+  --ring: oklch(0.704 0.04 256.788);
+
+  /* Hector brand gradients */
+  --brand-grad: linear-gradient(135deg, #6ad1e3 0%, #7d7dff 34%, #e451f5 70%, #1a2891 100%);
+  --blue-grad: linear-gradient(145deg, #1a2891 0%, #263dd1 54%, #6ad1e3 120%);
+  --pink-grad: linear-gradient(145deg, #e451f5 0%, #8a68ff 42%, #6ad1e3 100%);
+  --aurora-bg: radial-gradient(120% 80% at 20% 0%, #4b3bd8 0%, transparent 55%),
+    radial-gradient(110% 80% at 90% 10%, #e451f5 0%, transparent 50%),
+    radial-gradient(120% 80% at 50% 100%, #6ad1e3 0%, transparent 55%),
+    linear-gradient(180deg, #0a0f3a 0%, #1a2891 60%, #2a1d6b 100%);
+
+  --shadow-glass: 0 30px 60px -20px rgba(7, 16, 56, 0.55), 0 8px 24px -10px rgba(7, 16, 56, 0.35);
+  --shadow-soft: 0 18px 50px rgba(7, 16, 56, 0.3);
+  --shadow-glow: 0 0 40px rgba(228, 81, 245, 0.35);
+
+  --glass-stroke: rgba(255, 255, 255, 0.22);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+    -webkit-tap-highlight-color: transparent;
+  }
+  html,
+  body {
+    margin: 0;
+    min-height: 100%;
+    color: #fff;
+    font-family: var(--font-sans);
+    background: var(--aurora-bg);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+  }
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+}
+
+/* Glass liquid utilities */
+@utility glass-soft {
+  border: 1px solid var(--glass-stroke);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow: var(--shadow-glass), var(--glass-highlight);
+}
+@utility glass-strong {
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(34px) saturate(190%);
+  -webkit-backdrop-filter: blur(34px) saturate(190%);
+  box-shadow: var(--shadow-glass), var(--glass-highlight);
+}
+@utility glass-chip {
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  box-shadow: var(--glass-highlight);
+}
+@utility glass-input {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: #fff;
+}
+@utility bg-brand-grad {
+  background: var(--brand-grad);
+}
+@utility bg-blue-grad {
+  background: var(--blue-grad);
+}
+@utility bg-pink-grad {
+  background: var(--pink-grad);
+}
+@utility bg-aurora {
+  background: var(--aurora-bg);
+}
+@utility shadow-glass {
+  box-shadow: var(--shadow-glass);
+}
+@utility shadow-glow {
+  box-shadow: var(--shadow-glow);
+}
+@utility text-balance {
+  text-wrap: balance;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+/* Floating blobs animation for ambient bg */
+@keyframes floatBlob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(20px, -30px) scale(1.08); }
+}
+.blob-anim {
+  animation: floatBlob 14s ease-in-out infinite;
+}

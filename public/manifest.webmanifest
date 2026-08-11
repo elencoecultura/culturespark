@@ -1,0 +1,16 @@
+{
+  "name": "Encantômetro",
+  "short_name": "Encantômetro",
+  "description": "Conexão, cultura e cuidado em cena — Hector Studios",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0f3a",
+  "theme_color": "#1a2891",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
