@@ -370,7 +370,7 @@ export const saveScore = createServerFn({ method: "POST" })
           comment: data.note ?? null,
           scored_by: context.userId,
         },
-        { onConflict: "evaluation_id,competency_id,scored_by" },
+        { onConflict: "evaluation_id,competency_id" },
       );
     if (error) throw new Error(error.message);
     return { ok: true };
