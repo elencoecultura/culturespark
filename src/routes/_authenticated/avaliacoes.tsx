@@ -203,7 +203,7 @@ function EvaluationsPage() {
 
   return (
     <LiquidBackground>
-      <div className="relative z-10 mx-auto max-w-3xl space-y-5 px-4 py-6 text-white">
+      <div className="relative z-10 mx-auto max-w-[430px] space-y-5 px-4 py-6 text-white">
         <header className="flex items-center gap-3">
           <Link to="/app" className="glass-chip grid h-10 w-10 place-items-center rounded-2xl transition active:scale-95" aria-label="Voltar ao app">
             <ArrowLeft className="h-5 w-5" />
@@ -737,7 +737,7 @@ function EvaluationDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
   return (
     <LiquidBackground>
-      <div className="relative z-10 mx-auto max-w-3xl space-y-4 px-4 py-6 pb-24 text-white">
+      <div className="relative z-10 mx-auto max-w-[430px] space-y-4 px-4 py-6 pb-24 text-white">
         <header className="flex items-center gap-3">
           <button onClick={onBack} className="glass-chip grid h-10 w-10 place-items-center rounded-2xl transition active:scale-95" aria-label="Voltar">
             <ArrowLeft className="h-5 w-5" />

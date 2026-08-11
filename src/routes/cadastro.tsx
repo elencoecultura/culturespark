@@ -131,7 +131,7 @@ function CadastroPage() {
 
   return (
     <LiquidBackground>
-      <main className="relative mx-auto flex min-h-screen w-full max-w-[460px] flex-col px-6 pb-10 pt-12">
+      <main className="relative mx-auto flex min-h-screen w-full max-w-[430px] flex-col px-6 pb-10 pt-12">
         <div className="flex flex-col items-center text-center">
           <img
             src={hectorLogo}

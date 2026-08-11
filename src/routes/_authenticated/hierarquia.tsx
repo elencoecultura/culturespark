@@ -135,7 +135,7 @@ function HierarchyContent() {
 
   return (
     <LiquidBackground>
-      <div className="relative z-10 mx-auto max-w-5xl px-4 py-6 space-y-5 text-white">
+      <div className="relative z-10 mx-auto max-w-[430px] px-4 py-6 space-y-5 text-white">
         <header className="flex items-center gap-3">
           <Link to="/app" className="rounded-full bg-white/10 border border-white/20 p-2 hover:bg-white/20">
             <ArrowLeft className="h-5 w-5" />
