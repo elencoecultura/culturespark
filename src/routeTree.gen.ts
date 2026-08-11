@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as RedefinirSenhaRouteImport } from './routes/redefinir-senha'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as CadastroRouteImport } from './routes/cadastro'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
@@ -17,6 +18,11 @@ import { Route as AuthenticatedHierarquiaRouteImport } from './routes/_authentic
 import { Route as AuthenticatedAvaliacoesRouteImport } from './routes/_authenticated/avaliacoes'
 import { Route as AuthenticatedAppRouteImport } from './routes/_authenticated/app'
 
+const RedefinirSenhaRoute = RedefinirSenhaRouteImport.update({
+  id: '/redefinir-senha',
+  path: '/redefinir-senha',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -56,6 +62,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/cadastro': typeof CadastroRoute
   '/login': typeof LoginRoute
+  '/redefinir-senha': typeof RedefinirSenhaRoute
   '/app': typeof AuthenticatedAppRoute
   '/avaliacoes': typeof AuthenticatedAvaliacoesRoute
   '/hierarquia': typeof AuthenticatedHierarquiaRoute
@@ -64,6 +71,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/cadastro': typeof CadastroRoute
   '/login': typeof LoginRoute
+  '/redefinir-senha': typeof RedefinirSenhaRoute
   '/app': typeof AuthenticatedAppRoute
   '/avaliacoes': typeof AuthenticatedAvaliacoesRoute
   '/hierarquia': typeof AuthenticatedHierarquiaRoute
@@ -74,6 +82,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/cadastro': typeof CadastroRoute
   '/login': typeof LoginRoute
+  '/redefinir-senha': typeof RedefinirSenhaRoute
   '/_authenticated/app': typeof AuthenticatedAppRoute
   '/_authenticated/avaliacoes': typeof AuthenticatedAvaliacoesRoute
   '/_authenticated/hierarquia': typeof AuthenticatedHierarquiaRoute
@@ -84,17 +93,26 @@ export interface FileRouteTypes {
     | '/'
     | '/cadastro'
     | '/login'
+    | '/redefinir-senha'
     | '/app'
     | '/avaliacoes'
     | '/hierarquia'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/cadastro' | '/login' | '/app' | '/avaliacoes' | '/hierarquia'
+  to:
+    | '/'
+    | '/cadastro'
+    | '/login'
+    | '/redefinir-senha'
+    | '/app'
+    | '/avaliacoes'
+    | '/hierarquia'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/cadastro'
     | '/login'
+    | '/redefinir-senha'
     | '/_authenticated/app'
     | '/_authenticated/avaliacoes'
     | '/_authenticated/hierarquia'
@@ -105,10 +123,18 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   CadastroRoute: typeof CadastroRoute
   LoginRoute: typeof LoginRoute
+  RedefinirSenhaRoute: typeof RedefinirSenhaRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/redefinir-senha': {
+      id: '/redefinir-senha'
+      path: '/redefinir-senha'
+      fullPath: '/redefinir-senha'
+      preLoaderRoute: typeof RedefinirSenhaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -181,6 +207,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   CadastroRoute: CadastroRoute,
   LoginRoute: LoginRoute,
+  RedefinirSenhaRoute: RedefinirSenhaRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

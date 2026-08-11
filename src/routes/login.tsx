@@ -124,7 +124,28 @@ function LoginPage() {
 
         </form>
 
-        <button className="mx-auto mt-6 text-[13px] font-medium text-white/70 underline-offset-4 hover:underline">
+        <button
+          type="button"
+          onClick={async () => {
+            if (!email) {
+              toast.error("Digite seu email primeiro", {
+                description: "Preencha o campo de email acima e toque em \"Esqueci minha senha\" de novo.",
+              });
+              return;
+            }
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+              redirectTo: `${window.location.origin}/redefinir-senha`,
+            });
+            if (error) {
+              toast.error("Não rolou enviar o link", { description: error.message });
+              return;
+            }
+            toast.success("Enviamos um link pro seu email", {
+              description: "Confira sua caixa de entrada (e spam) pra definir uma senha nova.",
+            });
+          }}
+          className="mx-auto mt-6 text-[13px] font-medium text-white/70 underline-offset-4 hover:underline"
+        >
           Esqueci minha senha
         </button>
 
