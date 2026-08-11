@@ -63,13 +63,17 @@ Depois de aplicar migrations novas que criam tabelas/colunas, os tipos em `src/i
 
 ## Deploy (Vercel)
 
-```bash
-bunx vercel --prod
-```
+Projeto conectado ao repositório GitHub — todo push em `main` dispara build e deploy automático na Vercel (não precisa rodar `vercel --prod` manualmente).
 
-Configure no painel da Vercel (Project Settings → Environment Variables) as 7 variáveis da tabela acima — `SUPABASE_SERVICE_ROLE_KEY` só como secret de servidor.
+Configure no painel da Vercel (Project Settings → Environment Variables) as 7 variáveis da tabela acima — `SUPABASE_SERVICE_ROLE_KEY` só como secret de servidor. Se o projeto Vercel for de um time (não conta pessoal), desative **Deployment Protection → Vercel Authentication** para Production, senão visitantes sem conta na Vercel caem numa tela de login da Vercel em vez do app.
 
-No Supabase → Authentication → URL Configuration, configure **Site URL** e **Redirect URLs** com o domínio de produção.
+No Supabase → Authentication → URL Configuration, configure **Site URL** e **Redirect URLs** com o domínio de produção (ex. `https://SEU-DOMINIO.vercel.app/**`).
+
+**Emails de auth (convite/recuperação de senha):** o serviço de email padrão do Supabase tem um limite bem baixo (poucos envios por hora) — bom pra testar, ruim pra produção. Configure um SMTP próprio em Authentication → Settings → SMTP Settings (Resend, SendGrid, Gmail, etc.) antes de depender de convites/recuperação de senha em escala.
+
+## Autenticação — definir/redefinir senha
+
+O botão "Esqueci minha senha" (`src/routes/login.tsx`) chama `supabase.auth.resetPasswordForEmail` e a rota `src/routes/redefinir-senha.tsx` consome o link (recovery ou invite) e chama `supabase.auth.updateUser({ password })`. Sem essa rota, links de convite/recuperação do Supabase caem direto no login sem chance de definir senha.
 
 ## Pontas conhecidas
 
@@ -77,3 +81,4 @@ No Supabase → Authentication → URL Configuration, configure **Site URL** e *
 - **Check-in com nota**: a versão inline da Home não tem o campo "nota opcional" que a antiga aba Humor tinha.
 - **Aniversários**: seed só preenche `profiles` existentes — ver seção de migrations acima.
 - **Equipe Studios** (apelidos, só dia/mês) ficou comentada na migration de seed — preencher manualmente depois.
+- **Migração de usuários do Lovable Cloud**: como o banco antigo era gerenciado pelo Lovable (sem acesso direto ao Postgres), não foi possível migrar hashes de senha reais. As 4 contas com acesso real (na época da migração: admins + 1 elenco) foram recriadas via Supabase Admin API (`generateLink` tipo `recovery`/`invite`) e cada pessoa definiu senha nova em `/redefinir-senha`. Os ~103 pré-cadastros do elenco (nomes, cargos, setor) foram reimportados em `pre_registrations` para o fluxo de cadastro por nome continuar funcionando.
