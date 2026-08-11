@@ -18,22 +18,11 @@ const pad = (n: number) => String(n).padStart(2, "0");
 export const listWeekBirthdays = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    type Prof = {
-      id: string;
-      full_name: string;
-      attraction: string | null;
-      negocio: string | null;
-      birth_date: string;
-    };
-    // birth_date foi adicionada por migration nova; os tipos gerados ainda não a conhecem, então tipamos manualmente.
-    const res = (await context.supabase
+    const res = await context.supabase
       .from("profiles")
       .select("id, full_name, attraction, negocio, birth_date")
       .eq("active", true)
-      .not("birth_date", "is", null)) as unknown as {
-      data: Prof[] | null;
-      error: { message: string } | null;
-    };
+      .not("birth_date", "is", null);
     if (res.error) throw new Error(res.error.message);
     const profs = res.data ?? [];
 
@@ -59,33 +48,25 @@ export const listWeekBirthdays = createServerFn({ method: "GET" })
     }
     const todayMd = `${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
 
-    const rows = (profs ?? [])
-      .map(
-        (p: {
-          id: string;
-          full_name: string;
-          attraction: string | null;
-          negocio: string | null;
-          birth_date: string;
-        }) => {
-          const [by, bm, bd] = String(p.birth_date).split("-");
-          const md = `${bm}-${bd}`;
-          const day = dayByMd.get(md);
-          if (!day) return null;
-          const year = Number(by);
-          const turns = year > 1901 ? day.getFullYear() - year : null;
-          return {
-            id: p.id,
-            full_name: p.full_name,
-            attraction: p.attraction,
-            negocio: p.negocio,
-            month_day: md,
-            is_today: md === todayMd,
-            weekday: WEEKDAYS[day.getDay()],
-            turns,
-          };
-        },
-      )
+    const rows = profs
+      .map((p) => {
+        const [by, bm, bd] = String(p.birth_date).split("-");
+        const md = `${bm}-${bd}`;
+        const day = dayByMd.get(md);
+        if (!day) return null;
+        const year = Number(by);
+        const turns = year > 1901 ? day.getFullYear() - year : null;
+        return {
+          id: p.id,
+          full_name: p.full_name,
+          attraction: p.attraction,
+          negocio: p.negocio,
+          month_day: md,
+          is_today: md === todayMd,
+          weekday: WEEKDAYS[day.getDay()],
+          turns,
+        };
+      })
       .filter((r): r is NonNullable<typeof r> => r !== null)
       .sort((a, b) => a.month_day.localeCompare(b.month_day));
 

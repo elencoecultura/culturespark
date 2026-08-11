@@ -7,42 +7,22 @@ const DAY = 86_400_000;
 const UNLOCK_DAYS = 7; // disponível 1 semana após o primeiro login
 const COOLDOWN_DAYS = 365; // 1x por ano
 
-type BtRow = {
-  id: string;
-  taken_at: string;
-  score_d: number;
-  score_i: number;
-  score_s: number;
-  score_c: number;
-  primary_essence: Essence;
-  secondary_essence: Essence | null;
-  combination: string | null;
-  profile_type: string;
-  share_with_leadership: boolean;
-};
-
 export const getDiscStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const prof = (await context.supabase
+    const prof = await context.supabase
       .from("profiles")
       .select("first_login_at, created_at")
       .eq("id", context.userId)
-      .maybeSingle()) as unknown as {
-      data: { first_login_at: string | null; created_at: string } | null;
-    };
+      .maybeSingle();
 
-    // Tabela nova; os tipos gerados ainda não a conhecem, então usamos client destipado.
-    const sb = context.supabase as unknown as {
-      from: (t: string) => any;
-    };
-    const last = (await sb
+    const last = await context.supabase
       .from("behavioral_tests")
       .select("*")
       .eq("user_id", context.userId)
       .order("taken_at", { ascending: false })
       .limit(1)
-      .maybeSingle()) as { data: BtRow | null };
+      .maybeSingle();
 
     const now = Date.now();
     const firstLogin = prof.data?.first_login_at ?? prof.data?.created_at ?? null;
@@ -112,8 +92,7 @@ export const submitDiscTest = createServerFn({ method: "POST" })
     const profile_type = spread <= 2 ? "versatil" : gapTop <= 2 ? "dupla" : "single";
     const combo = comboFor(primary, secondary);
 
-    const sb = context.supabase as unknown as { from: (t: string) => any };
-    const ins = (await sb
+    const ins = await context.supabase
       .from("behavioral_tests")
       .insert({
         user_id: context.userId,
@@ -129,7 +108,7 @@ export const submitDiscTest = createServerFn({ method: "POST" })
         share_with_leadership: data.share_with_leadership ?? false,
       })
       .select("id")
-      .single()) as unknown as { data: { id: string } | null; error: { message: string } | null };
+      .single();
     if (ins.error) throw new Error(ins.error.message);
 
     return {
@@ -152,23 +131,15 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
     });
     if (!isAdmin) throw new Error("Forbidden");
 
-    type SharedRow = Pick<
-      BtRow,
-      "taken_at" | "primary_essence" | "secondary_essence" | "combination" | "profile_type"
-    > & { user_id: string };
-    const sb = context.supabase as unknown as { from: (t: string) => any };
-    const res = (await sb
+    const res = await context.supabase
       .from("behavioral_tests")
       .select("user_id, taken_at, primary_essence, secondary_essence, combination, profile_type")
       .eq("share_with_leadership", true)
-      .order("taken_at", { ascending: false })) as {
-      data: SharedRow[] | null;
-      error: { message: string } | null;
-    };
+      .order("taken_at", { ascending: false });
     if (res.error) throw new Error(res.error.message);
 
     // Mantém apenas o resultado mais recente de cada pessoa.
-    const latest = new Map<string, SharedRow>();
+    const latest = new Map<string, NonNullable<typeof res.data>[number]>();
     for (const r of res.data ?? []) if (!latest.has(r.user_id)) latest.set(r.user_id, r);
     const base = Array.from(latest.values());
 
@@ -192,15 +163,16 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
     let versatile = 0;
     const rows = base
       .map((r) => {
-        distribution[r.primary_essence] = (distribution[r.primary_essence] ?? 0) + 1;
+        const primary = r.primary_essence as Essence;
+        distribution[primary] = (distribution[primary] ?? 0) + 1;
         if (r.profile_type === "versatil") versatile += 1;
         const p = profById.get(r.user_id);
         return {
           user_id: r.user_id,
           name: p?.full_name ?? "Elenco",
           attraction: p?.attraction ?? p?.negocio ?? null,
-          primary: r.primary_essence,
-          secondary: r.secondary_essence,
+          primary,
+          secondary: r.secondary_essence as Essence | null,
           combination: r.combination,
           profile_type: r.profile_type,
           taken_at: r.taken_at,

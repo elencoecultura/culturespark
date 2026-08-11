@@ -56,6 +56,57 @@ export type Database = {
         }
         Relationships: []
       }
+      behavioral_tests: {
+        Row: {
+          answers: Json | null
+          combination: string | null
+          created_at: string
+          id: string
+          primary_essence: string
+          profile_type: string
+          score_c: number
+          score_d: number
+          score_i: number
+          score_s: number
+          secondary_essence: string | null
+          share_with_leadership: boolean
+          taken_at: string
+          user_id: string
+        }
+        Insert: {
+          answers?: Json | null
+          combination?: string | null
+          created_at?: string
+          id?: string
+          primary_essence: string
+          profile_type?: string
+          score_c: number
+          score_d: number
+          score_i: number
+          score_s: number
+          secondary_essence?: string | null
+          share_with_leadership?: boolean
+          taken_at?: string
+          user_id: string
+        }
+        Update: {
+          answers?: Json | null
+          combination?: string | null
+          created_at?: string
+          id?: string
+          primary_essence?: string
+          profile_type?: string
+          score_c?: number
+          score_d?: number
+          score_i?: number
+          score_s?: number
+          secondary_essence?: string | null
+          share_with_leadership?: boolean
+          taken_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       evaluation_competencies: {
         Row: {
           active: boolean
@@ -957,6 +1008,7 @@ export type Database = {
           active: boolean
           area: string | null
           attraction: string | null
+          birth_date: string | null
           co_leader_id: string | null
           cpf: string | null
           created_at: string
@@ -979,6 +1031,7 @@ export type Database = {
           active?: boolean
           area?: string | null
           attraction?: string | null
+          birth_date?: string | null
           co_leader_id?: string | null
           cpf?: string | null
           created_at?: string
@@ -1001,6 +1054,7 @@ export type Database = {
           active?: boolean
           area?: string | null
           attraction?: string | null
+          birth_date?: string | null
           co_leader_id?: string | null
           cpf?: string | null
           created_at?: string
