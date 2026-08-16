@@ -2,13 +2,14 @@ import { useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { read, utils } from "xlsx";
-import { Loader2, Upload, Trash2, FileSpreadsheet, Check, X, Search, Users } from "lucide-react";
+import { Loader2, Upload, Trash2, FileSpreadsheet, Check, X, Search, Users, UserPlus, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { confirmAction } from "@/lib/confirm";
 import {
   importPreRegistrations,
   listPreRegistrations,
   deletePreRegistration,
+  createAccountForPreRegistration,
 } from "@/lib/pre-registration.functions";
 
 type Row = {
@@ -72,6 +73,149 @@ function parseSheet(file: File): Promise<Row[]> {
     reader.onerror = () => reject(reader.error);
     reader.readAsArrayBuffer(file);
   });
+}
+
+type PreRegRowData = {
+  id: string;
+  full_name: string;
+  email?: string | null;
+  cargo?: string | null;
+  setor?: string | null;
+  perfil: string;
+  negocio: string;
+  claimed_by?: string | null;
+};
+
+function genPassword() {
+  const words = ["Fenix", "Aurora", "Celeste", "Magia", "Estrela", "Portal"];
+  const w = words[Math.floor(Math.random() * words.length)];
+  const n = Math.floor(1000 + Math.random() * 9000);
+  return `${w}${n}!`;
+}
+
+function PreRegRow({ row: r, onDelete }: { row: PreRegRowData; onDelete: () => void }) {
+  const qc = useQueryClient();
+  const createFn = useServerFn(createAccountForPreRegistration);
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState(r.email ?? "");
+  const [password, setPassword] = useState(() => genPassword());
+  const [showPass, setShowPass] = useState(false);
+
+  const create = useMutation({
+    mutationFn: () =>
+      createFn({ data: { pre_registration_id: r.id, email: email.trim().toLowerCase(), password } }),
+    onSuccess: () => {
+      toast.success(`Conta criada para ${r.full_name}`, {
+        description: `Repasse o email e a senha por um canal direto (WhatsApp, etc). ${email} · ${password}`,
+      });
+      qc.invalidateQueries({ queryKey: ["pre-regs"] });
+      setOpen(false);
+    },
+    onError: (e: Error) => toast.error("Não rolou criar a conta", { description: e.message }),
+  });
+
+  return (
+    <div className="glass-chip rounded-2xl px-3 py-2.5">
+      <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-[13.5px] font-semibold text-white">{r.full_name}</span>
+            {r.claimed_by ? (
+              <span className="rounded-full bg-magic-green/20 px-2 py-0.5 text-[10px] font-semibold text-magic-green">
+                cadastrado
+              </span>
+            ) : (
+              <span className="rounded-full bg-magic-amber/20 px-2 py-0.5 text-[10px] font-semibold text-magic-amber">
+                pendente
+              </span>
+            )}
+          </div>
+          <div className="truncate text-[11.5px] text-white/65">
+            {r.perfil} · {r.cargo ?? "—"} · {r.setor ?? "—"} · {r.negocio}
+            {r.email ? ` · ${r.email}` : ""}
+          </div>
+        </div>
+        {!r.claimed_by && (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-white/85 hover:bg-white/20"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            Criar conta
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onDelete}
+          className="rounded-full bg-white/10 p-2 text-white/80 hover:bg-magic-red/30 hover:text-white"
+          aria-label="Apagar"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+
+      {open && !r.claimed_by && (
+        <div className="mt-3 grid gap-2 rounded-2xl border border-white/15 bg-white/5 p-3">
+          <label className="block">
+            <span className="ml-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-white/60">
+              Email
+            </span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="pessoa@email.com"
+              className="mt-1 w-full rounded-xl bg-white/10 px-3 py-2 text-[13px] text-white outline-none placeholder:text-white/40"
+            />
+          </label>
+          <label className="block">
+            <span className="ml-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-white/60">
+              Senha
+            </span>
+            <div className="mt-1 flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2">
+              <input
+                type={showPass ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-transparent text-[13px] text-white outline-none"
+              />
+              <button type="button" onClick={() => setShowPass((v) => !v)} className="shrink-0 text-white/60">
+                {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </label>
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setPassword(genPassword())}
+              className="text-[11.5px] text-celeste underline-offset-4 hover:underline"
+            >
+              gerar outra senha
+            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="rounded-full bg-white/10 px-3 py-1.5 text-[12px] text-white hover:bg-white/20"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={create.isPending || !email.includes("@") || password.length < 6}
+                onClick={() => create.mutate()}
+                className="flex items-center gap-1.5 rounded-full bg-magic-green px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50"
+              >
+                {create.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function PreRegistrationsAdmin() {
@@ -279,36 +423,11 @@ export default function PreRegistrationsAdmin() {
           </div>
         )}
         {filtered.map((r) => (
-          <div key={r.id} className="glass-chip flex items-center gap-3 rounded-2xl px-3 py-2.5">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="truncate text-[13.5px] font-semibold text-white">{r.full_name}</span>
-                {r.claimed_by ? (
-                  <span className="rounded-full bg-magic-green/20 px-2 py-0.5 text-[10px] font-semibold text-magic-green">
-                    cadastrado
-                  </span>
-                ) : (
-                  <span className="rounded-full bg-magic-amber/20 px-2 py-0.5 text-[10px] font-semibold text-magic-amber">
-                    pendente
-                  </span>
-                )}
-              </div>
-              <div className="truncate text-[11.5px] text-white/65">
-                {r.perfil} · {r.cargo ?? "—"} · {r.setor ?? "—"} · {r.negocio}
-                {r.email ? ` · ${r.email}` : ""}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                confirmAction(`Apagar pré-cadastro de ${r.full_name}?`, () => del.mutate(r.id));
-              }}
-              className="rounded-full bg-white/10 p-2 text-white/80 hover:bg-magic-red/30 hover:text-white"
-              aria-label="Apagar"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </div>
+          <PreRegRow
+            key={r.id}
+            row={r}
+            onDelete={() => confirmAction(`Apagar pré-cadastro de ${r.full_name}?`, () => del.mutate(r.id))}
+          />
         ))}
       </div>
     </div>

@@ -154,6 +154,56 @@ export const listPreRegistrations = createServerFn({ method: "GET" })
     return data ?? [];
   });
 
+// Admin: cria a conta manualmente (email + senha escolhidos pelo admin) já
+// linkada a um pré-cadastro específico. Usa o mesmo mecanismo do cadastro
+// normal (trigger handle_new_user casa por nome normalizado e reivindica o
+// pré-cadastro), só que o admin escolhe explicitamente qual linha linkar em
+// vez de depender do que a pessoa digitar.
+export const createAccountForPreRegistration = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({
+      pre_registration_id: z.string().uuid(),
+      email: z.string().trim().toLowerCase().email("Email inválido").max(255),
+      password: z.string().min(6, "Senha precisa ter 6+ caracteres").max(72),
+    }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: pre, error: preErr } = await supabaseAdmin
+      .from("pre_registrations")
+      .select("id, full_name, cargo, negocio, claimed_by")
+      .eq("id", data.pre_registration_id)
+      .maybeSingle();
+    if (preErr) throw new Error(preErr.message);
+    if (!pre) throw new Error("Pré-cadastro não encontrado.");
+    if (pre.claimed_by) throw new Error("Esse pré-cadastro já tem conta.");
+
+    const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
+      email: data.email,
+      password: data.password,
+      email_confirm: true,
+      user_metadata: { full_name: pre.full_name, attraction: pre.negocio, role_title: pre.cargo },
+    });
+    if (error || !created.user) {
+      const msg = (error?.message || "").toLowerCase();
+      if (msg.includes("already") || msg.includes("registered") || msg.includes("exists")) {
+        throw new Error("Este email já está cadastrado.");
+      }
+      throw new Error(error?.message || "Falha ao criar conta");
+    }
+
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("hero_id")
+      .eq("id", created.user.id)
+      .maybeSingle();
+
+    return { hero_id: (profile?.hero_id as string | undefined) ?? null, full_name: pre.full_name };
+  });
+
 export const deletePreRegistration = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
