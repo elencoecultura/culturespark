@@ -1033,6 +1033,8 @@ function PillarSection({
   const accent = pillarAccent(pillar.name);
   const scored = comps.filter((c) => typeof scoreMap.get(c.id)?.score === "number");
   const avg = scored.length ? +(scored.reduce((a, c) => a + scoreMap.get(c.id).score, 0) / scored.length).toFixed(1) : null;
+  const [showGuide, setShowGuide] = useState(false);
+  const hasGuide = comps.some((c) => c.how_to_evaluate);
 
   return (
     <Card>
@@ -1043,6 +1045,15 @@ function PillarSection({
             <h3 className="font-display text-[17px] font-black tracking-[-0.02em]">{pillar.name}</h3>
           </div>
           {pillar.description && <p className="mt-1 text-[12px] text-white/60">{pillar.description}</p>}
+          {hasGuide && (
+            <button
+              type="button"
+              onClick={() => setShowGuide(true)}
+              className="mt-2 flex items-center gap-1 text-[11.5px] font-semibold text-celeste"
+            >
+              <HelpCircle className="h-3.5 w-3.5" /> Como avaliar
+            </button>
+          )}
         </div>
         <div className="shrink-0 text-right">
           <div className={cn("font-display text-[20px] font-black", accent.text)}>{avg ?? "—"}</div>
@@ -1055,6 +1066,24 @@ function PillarSection({
           <CompetencyRow key={c.id} comp={c} current={scoreMap.get(c.id)?.score ?? 0} onScore={(n) => onScore(c.id, n)} />
         ))}
       </div>
+
+      <BottomSheetModal
+        open={showGuide}
+        onClose={() => setShowGuide(false)}
+        title={`Como avaliar — ${pillar.name}`}
+        description="Um guia rápido pra cada competência desse pilar."
+      >
+        <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+          {comps.map((c) => (
+            <div key={c.id} className="rounded-2xl bg-white/[0.04] p-3">
+              <div className="text-[13px] font-semibold text-white">{c.name}</div>
+              {c.how_to_evaluate && (
+                <div className="mt-1 text-[12.5px] leading-snug text-white/70">{c.how_to_evaluate}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </BottomSheetModal>
     </Card>
   );
 }
@@ -1063,27 +1092,12 @@ function CompetencyRow({ comp, current, onScore }: { comp: any; current: number;
   const expected = Number(comp.expected_score ?? 4);
   const below = current > 0 && current < expected;
   const met = current >= expected && current > 0;
-  const [showGuide, setShowGuide] = useState(false);
   return (
     <div className={cn("rounded-2xl border p-3", below ? "border-magic-red/40 bg-magic-red/[0.07]" : "border-white/10 bg-white/[0.04]")}>
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-sm font-semibold">{comp.name}</div>
           {comp.description && <div className="mt-0.5 text-[11.5px] leading-snug text-white/55">{comp.description}</div>}
-          {comp.how_to_evaluate && (
-            <button
-              type="button"
-              onClick={() => setShowGuide((v) => !v)}
-              className="mt-1.5 flex items-center gap-1 text-[11px] font-semibold text-celeste"
-            >
-              <HelpCircle className="h-3 w-3" /> Como avaliar essa competência
-            </button>
-          )}
-          {showGuide && comp.how_to_evaluate && (
-            <div className="mt-1.5 rounded-xl bg-celeste/10 p-2.5 text-[11.5px] leading-snug text-white/80">
-              {comp.how_to_evaluate}
-            </div>
-          )}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <span className="glass-chip rounded-full px-2 py-0.5 text-[10px] text-white/70">esperado {expected}</span>

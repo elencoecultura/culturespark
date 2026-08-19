@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, Check, Loader2, Lock, RefreshCw, Compass, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Lock, RefreshCw, Compass, Sparkles, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getDiscStatus, submitDiscTest, listTeamDiscResults } from "@/lib/disc.functions";
 import { QUESTIONS, ESSENCES, comboFor, characterFor, type Essence } from "@/lib/disc-content";
@@ -219,9 +219,38 @@ function IntroView({
   const eligible = !!status?.eligible;
   const unlockInDays = status?.unlockInDays ?? 0;
   const cooldownDays = status?.cooldownDays ?? 0;
+  const character = lastResult ? characterFor(lastResult.primary, lastResult.secondary) : null;
 
   return (
     <div className="mt-5 space-y-4">
+      {lastResult && onViewLast && (
+        <button onClick={onViewLast} className="block w-full text-left">
+          <Card className="border border-white/15">
+            <div className="flex items-center gap-3">
+              <span
+                className={cn(
+                  "grid h-12 w-12 shrink-0 place-items-center rounded-full font-display text-[15px] font-black text-white",
+                  ESSENCE_COLOR[lastResult.primary].bar,
+                )}
+              >
+                {lastResult.primary}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/55">
+                  Seu resultado salvo
+                </div>
+                <div className="font-display text-[15px] font-black tracking-[-0.01em]">
+                  {ESSENCES[lastResult.primary].name}
+                  {lastResult.secondary ? ` + ${ESSENCES[lastResult.secondary].name}` : ""}
+                </div>
+                {character && <div className="text-[12px] text-white/70">{character.name}</div>}
+              </div>
+              <ChevronRight size={18} className="shrink-0 text-white/50" />
+            </div>
+          </Card>
+        </button>
+      )}
+
       <Card>
         <p className="text-[13.5px] leading-relaxed text-white/85">
           Toda grande jornada reúne pessoas que pensam, decidem, comunicam e enfrentam desafios de
@@ -265,8 +294,8 @@ function IntroView({
           <div>
             <div className="font-display text-[15px] font-black">Você já respondeu este ano</div>
             <div className="text-[12px] text-white/65">
-              Poderá refazer em {cooldownDays} dia{cooldownDays > 1 ? "s" : ""}. Veja seu resultado
-              abaixo.
+              Poderá refazer em {cooldownDays} dia{cooldownDays > 1 ? "s" : ""}. Seu resultado está
+              salvo acima.
             </div>
           </div>
         </Card>
@@ -289,16 +318,6 @@ function IntroView({
             <Sparkles size={16} /> Iniciar minha jornada
           </button>
         </>
-      )}
-
-      {onViewLast && (
-        <button
-          onClick={onViewLast}
-          className="glass-chip w-full rounded-full py-3 text-[13px] font-semibold text-white transition hover:bg-white/15"
-        >
-          Ver meu último resultado
-          {lastResult ? ` · ${ESSENCES[lastResult.primary].name}` : ""}
-        </button>
       )}
 
       <p className="px-1 text-[10.5px] leading-relaxed text-white/40">
