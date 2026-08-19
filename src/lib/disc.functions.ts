@@ -34,9 +34,33 @@ export const getDiscStatus = createServerFn({ method: "GET" })
     const lastTaken = last.data?.taken_at ? new Date(last.data.taken_at).getTime() : null;
     const daysSinceTest = lastTaken != null ? Math.floor((now - lastTaken) / DAY) : null;
     const cooldownDays = daysSinceTest == null ? 0 : Math.max(0, COOLDOWN_DAYS - daysSinceTest);
+    const eligible = unlockInDays === 0 && cooldownDays === 0;
+
+    if (eligible) {
+      // Notifica só na primeira checagem depois de liberar (dedupe por categoria +
+      // janela desde a última liberação: testes anteriores viram a régua pra trás).
+      const since = lastTaken ? new Date(lastTaken).toISOString() : "1970-01-01T00:00:00Z";
+      const already = await context.supabase
+        .from("notifications")
+        .select("id")
+        .eq("user_id", context.userId)
+        .eq("category", "disc_unlocked")
+        .gt("created_at", since)
+        .limit(1)
+        .maybeSingle();
+      if (!already.data) {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        await supabaseAdmin.from("notifications").insert({
+          user_id: context.userId,
+          category: "disc_unlocked",
+          title: "Sua Bússola das Essências está liberada! 🧭",
+          body: "Já dá pra fazer o teste comportamental e descobrir seu personagem-espírito.",
+        });
+      }
+    }
 
     return {
-      eligible: unlockInDays === 0 && cooldownDays === 0,
+      eligible,
       unlockInDays,
       cooldownDays,
       hasEver: !!last.data,
@@ -161,16 +185,31 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
 
     const distribution: Record<Essence, number> = { D: 0, I: 0, S: 0, C: 0 };
     let versatile = 0;
+    const byAttraction = new Map<
+      string,
+      { distribution: Record<Essence, number>; total: number }
+    >();
     const rows = base
       .map((r) => {
         const primary = r.primary_essence as Essence;
         distribution[primary] = (distribution[primary] ?? 0) + 1;
         if (r.profile_type === "versatil") versatile += 1;
         const p = profById.get(r.user_id);
+        const attraction = p?.attraction ?? p?.negocio ?? null;
+
+        const key = attraction ?? "Sem casa definida";
+        const bucket = byAttraction.get(key) ?? {
+          distribution: { D: 0, I: 0, S: 0, C: 0 },
+          total: 0,
+        };
+        bucket.distribution[primary] += 1;
+        bucket.total += 1;
+        byAttraction.set(key, bucket);
+
         return {
           user_id: r.user_id,
           name: p?.full_name ?? "Elenco",
-          attraction: p?.attraction ?? p?.negocio ?? null,
+          attraction,
           primary,
           secondary: r.secondary_essence as Essence | null,
           combination: r.combination,
@@ -180,5 +219,26 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
       })
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    return { rows, distribution, total: rows.length, versatile };
+    const ESSENCE_LABEL: Record<Essence, string> = {
+      D: "Dominância",
+      I: "Influência",
+      S: "Estabilidade",
+      C: "Conformidade",
+    };
+    const byAttractionList = Array.from(byAttraction.entries())
+      .map(([attraction, bucket]) => {
+        const predominant = (["D", "I", "S", "C"] as Essence[]).sort(
+          (a, b) => bucket.distribution[b] - bucket.distribution[a],
+        )[0];
+        return {
+          attraction,
+          distribution: bucket.distribution,
+          total: bucket.total,
+          predominant,
+          predominantLabel: ESSENCE_LABEL[predominant],
+        };
+      })
+      .sort((a, b) => b.total - a.total);
+
+    return { rows, distribution, total: rows.length, versatile, byAttraction: byAttractionList };
   });

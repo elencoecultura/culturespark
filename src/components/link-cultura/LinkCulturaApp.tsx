@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useRef, type ReactNode } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { MoreHorizontal, Compass, Briefcase, Wifi, Plus, BarChart3, Cake, PartyPopper, Gift } from "lucide-react";
+import { MoreHorizontal, Compass, Briefcase, Wifi, Plus, BarChart3, Cake, PartyPopper, Gift, Gauge, Download } from "lucide-react";
 import {
   Home,
   Heart,
@@ -71,6 +71,8 @@ import BusinessSelector from "./BusinessSelector";
 import { getDailyPhrase, getPillar } from "@/lib/culture-content";
 import { NotificationsBell, BroadcastAdminScreen } from "./Notifications";
 import { NpsBanner, HomeNotifications } from "./HomeExtras";
+import CultureOverview from "./CultureOverview";
+import InstallGuide from "./InstallGuide";
 
 
 
@@ -406,6 +408,84 @@ function DiscBanner({ go }: { go: (id: TabId) => void }) {
   );
 }
 
+// Banner de instalação: usa o prompt nativo no Android/Chrome (beforeinstallprompt);
+// no iOS Safari não existe esse evento, então mostra um atalho pro guia manual.
+function InstallBanner({ go }: { go: (id: TabId) => void }) {
+  const [deferred, setDeferred] = useState<any>(null);
+  const [dismissed, setDismissed] = useState(true);
+  const [standalone, setStandalone] = useState(true);
+  const [isIOS, setIsIOS] = useState(false);
+
+  useEffect(() => {
+    const iosStandalone = (window.navigator as any).standalone === true;
+    const displayModeStandalone = window.matchMedia("(display-mode: standalone)").matches;
+    setStandalone(iosStandalone || displayModeStandalone);
+
+    const ua = window.navigator.userAgent;
+    setIsIOS(/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1));
+
+    const dismissedAt = localStorage.getItem("install-banner-dismissed");
+    setDismissed(!!dismissedAt && Date.now() - Number(dismissedAt) < 14 * 86_400_000);
+
+    const onPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferred(e);
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
+  }, []);
+
+  const dismiss = () => {
+    localStorage.setItem("install-banner-dismissed", String(Date.now()));
+    setDismissed(true);
+  };
+
+  if (standalone || dismissed || (!deferred && !isIOS)) return null;
+
+  return (
+    <div className="mt-4">
+      <GlassCard variant="blue" className="overflow-hidden">
+        <div className="flex items-start gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white/25">
+            <Download size={20} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/75">Instale o app</div>
+            <div className="font-display text-[15px] font-black tracking-[-0.01em]">
+              Tenha o Por trás da Magia na tela inicial
+            </div>
+            <div className="text-[12px] text-white/85">Acesso rápido, sem precisar abrir o navegador.</div>
+          </div>
+          <button onClick={dismiss} className="shrink-0 text-white/60" aria-label="Dispensar">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="mt-3">
+          {deferred ? (
+            <button
+              onClick={async () => {
+                deferred.prompt();
+                await deferred.userChoice;
+                setDeferred(null);
+              }}
+              className="w-full rounded-full bg-white/20 px-4 py-2.5 text-[13px] font-semibold text-white"
+            >
+              Instalar agora
+            </button>
+          ) : (
+            <button
+              onClick={() => go("install-guide")}
+              className="w-full rounded-full bg-white/20 px-4 py-2.5 text-[13px] font-semibold text-white"
+            >
+              Ver como instalar
+            </button>
+          )}
+        </div>
+      </GlassCard>
+    </div>
+  );
+}
+
 function HomeScreen({ name, go, isAdmin, isLeader }: { name: string; go: (id: TabId) => void; isAdmin: boolean; isLeader: boolean }) {
   const fn = useServerFn(listMyMoods);
   const { data: moods } = useQuery({ queryKey: ["moods", "me"], queryFn: () => fn() });
@@ -434,6 +514,7 @@ function HomeScreen({ name, go, isAdmin, isLeader }: { name: string; go: (id: Ta
 
       <NpsBanner />
       <DiscBanner go={go} />
+      <InstallBanner go={go} />
       <HomeNotifications />
 
       {/* Atalhos — grade bento assimétrica */}
@@ -2117,7 +2198,7 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
 
 /* ---------- Shell ---------- */
 
-type TabId = "home" | "journey" | "feedback" | "schedule" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos";
+type TabId = "home" | "journey" | "feedback" | "schedule" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "culture-overview" | "install-guide";
 
 function BottomNav({
   active,
@@ -2220,6 +2301,7 @@ export default function LinkCulturaApp() {
         { id: "iluminari", label: "Iluminari", icon: Sun, desc: "Compartilhar um momento" },
         { id: "schedule", label: "Roteiro", icon: CalendarDays, desc: "Sua escala da semana" },
         { id: "feedback", label: "Elogio Rápido", icon: MessageCircle, desc: "Envie e veja reconhecimentos" },
+        { id: "install-guide", label: "Instalar o app", icon: Download, desc: "Passo a passo pra iPhone e Android" },
       ],
     });
 
@@ -2235,6 +2317,7 @@ export default function LinkCulturaApp() {
 
     if (isAdmin) {
       const adminItems: { id: TabId; label: string; icon: LucideIcon; desc: string }[] = [
+        { id: "culture-overview", label: "Indicadores de cultura", icon: Gauge, desc: "Painel geral com tudo num só lugar" },
         { id: "broadcast", label: "Enviar recado", icon: Send, desc: "Notificar todo o elenco" },
         { id: "flagged-kudos", label: "Elogios sinalizados", icon: Flag, desc: "Revisar mensagens marcadas pela moderação" },
         { id: "disc-admin", label: "Bússola do time", icon: Compass, desc: "Perfis comportamentais (quem consentiu)" },
@@ -2283,6 +2366,8 @@ export default function LinkCulturaApp() {
       case "disc-admin": return <BussolaAdmin />;
       case "wellbeing": return <WellbeingAdmin />;
       case "flagged-kudos": return <FlaggedKudosAdmin />;
+      case "culture-overview": return <CultureOverview />;
+      case "install-guide": return <InstallGuide />;
       case "vagas": return <JobsScreen isAdmin={isAdmin} />;
       case "wifi": return <WifiAllowlistScreen />;
       case "pre-reg": return <PreRegistrationsAdmin />;

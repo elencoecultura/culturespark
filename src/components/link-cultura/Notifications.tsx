@@ -17,6 +17,7 @@ import {
   createNpsSurvey,
   closeNpsSurvey,
   getNpsResults,
+  getNpsHistory,
 } from "@/lib/nps.functions";
 
 function timeAgo(iso: string) {
@@ -295,8 +296,10 @@ function NpsAdminBlock() {
   const createFn = useServerFn(createNpsSurvey);
   const closeFn = useServerFn(closeNpsSurvey);
   const resultsFn = useServerFn(getNpsResults);
+  const historyFn = useServerFn(getNpsHistory);
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["nps-surveys"], queryFn: () => listFn() });
+  const history = useQuery({ queryKey: ["nps-history"], queryFn: () => historyFn() });
   const [title, setTitle] = useState("Como está sua experiência este mês?");
   const [days, setDays] = useState(2);
   const [openResults, setOpenResults] = useState<string | null>(null);
@@ -379,6 +382,39 @@ function NpsAdminBlock() {
           {create.isPending ? "Publicando..." : "Publicar pesquisa"}
         </button>
       </div>
+
+      {(history.data?.history.filter((h) => h.total > 0).length ?? 0) > 1 && (
+        <div className="mt-4 glass-strong rounded-[26px] p-5">
+          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
+            Evolução do NPS
+          </div>
+          <div className="flex items-end gap-2.5 overflow-x-auto pb-1">
+            {(history.data?.history ?? [])
+              .filter((h) => h.total > 0)
+              .map((h) => {
+                const pct = ((h.nps ?? 0) + 100) / 2; // -100..100 -> 0..100%
+                const color =
+                  (h.nps ?? 0) >= 50
+                    ? "bg-magic-green"
+                    : (h.nps ?? 0) >= 0
+                      ? "bg-magic-amber"
+                      : "bg-magic-red";
+                return (
+                  <div key={h.survey_id} className="flex w-12 shrink-0 flex-col items-center gap-1.5">
+                    <div className="text-[12px] font-bold text-white">{h.nps}</div>
+                    <div className="h-20 w-full overflow-hidden rounded-lg bg-white/10">
+                      <div
+                        className={`w-full ${color}`}
+                        style={{ height: `${Math.max(4, pct)}%`, marginTop: `${100 - Math.max(4, pct)}%` }}
+                      />
+                    </div>
+                    <div className="text-[10px] capitalize text-white/60">{h.month}</div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
 
       <div className="mt-4 grid gap-2">
         {(list.data ?? []).map((s: any) => {

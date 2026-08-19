@@ -718,6 +718,27 @@ export type Database = {
         }
         Relationships: []
       }
+      low_energy_alerts: {
+        Row: {
+          id: string
+          streak_len: number
+          triggered_at: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          streak_len: number
+          triggered_at?: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          streak_len?: number
+          triggered_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       mood_checkins: {
         Row: {
           created_at: string
@@ -771,6 +792,7 @@ export type Database = {
       notifications: {
         Row: {
           body: string
+          category: string | null
           created_at: string
           created_by: string | null
           id: string
@@ -779,6 +801,7 @@ export type Database = {
         }
         Insert: {
           body: string
+          category?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -787,6 +810,7 @@ export type Database = {
         }
         Update: {
           body?: string
+          category?: string | null
           created_at?: string
           created_by?: string | null
           id?: string

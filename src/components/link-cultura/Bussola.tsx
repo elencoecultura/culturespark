@@ -666,6 +666,43 @@ export function BussolaAdmin() {
             )}
           </Card>
 
+          {(data?.byAttraction ?? []).length > 0 && (
+            <Card>
+              <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/55">
+                Perfil predominante por casa
+              </div>
+              <div className="grid gap-2">
+                {(data?.byAttraction ?? []).map((b) => {
+                  const c = ESSENCE_COLOR[b.predominant as Essence];
+                  return (
+                    <div
+                      key={b.attraction}
+                      className="flex items-center gap-3 rounded-2xl bg-white/[0.04] px-3 py-2.5"
+                    >
+                      <span
+                        className={cn(
+                          "grid h-9 w-9 shrink-0 place-items-center rounded-full font-display text-[12px] font-black text-white",
+                          c.bar,
+                        )}
+                      >
+                        {b.predominant}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13px] font-semibold text-white">
+                          {b.attraction}
+                        </div>
+                        <div className="truncate text-[11px] text-white/60">
+                          {b.predominantLabel} predominante · {b.total} pessoa
+                          {b.total === 1 ? "" : "s"}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
           <div className="grid gap-2">
             {rows.map((r) => {
               const c = ESSENCE_COLOR[r.primary as Essence];
@@ -687,6 +724,7 @@ export function BussolaAdmin() {
                       {ESSENCES[r.primary as Essence].name}
                       {r.secondary ? ` + ${ESSENCES[r.secondary as Essence].name}` : ""}
                       {r.combination ? ` · ${r.combination}` : ""}
+                      {r.attraction ? ` · ${r.attraction}` : ""}
                     </div>
                   </div>
                   <span className="shrink-0 text-[11px] text-white/45">

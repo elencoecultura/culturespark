@@ -586,6 +586,29 @@ function IndicatorsSection() {
         action={<NotifyPendingButton cycleId={d.cycle.id} />}
       />
 
+      {d.cyclesOverview && d.cyclesOverview.total > 0 && (
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="glass-chip rounded-2xl p-3 text-center">
+            <div className="font-display text-[20px] font-black text-white">{d.cyclesOverview.total}</div>
+            <div className="text-[10.5px] text-white/60">Ciclos no total</div>
+          </div>
+          <div className="glass-chip rounded-2xl p-3 text-center">
+            <div className="font-display text-[20px] font-black text-magic-green">{d.cyclesOverview.encerrado}</div>
+            <div className="text-[10.5px] text-white/60">Concluídos</div>
+          </div>
+          <div className="glass-chip rounded-2xl p-3 text-center">
+            <div className="font-display text-[20px] font-black text-magic-amber">{d.cyclesOverview.em_andamento}</div>
+            <div className="text-[10.5px] text-white/60">Em andamento</div>
+          </div>
+          <div className="glass-chip rounded-2xl p-3 text-center">
+            <div className="font-display text-[20px] font-black text-white/80">
+              {d.cyclesOverview.aberto + d.cyclesOverview.rascunho}
+            </div>
+            <div className="text-[10.5px] text-white/60">Pendentes / rascunho</div>
+          </div>
+        </div>
+      )}
+
       <div className="glass-chip mb-4 rounded-2xl px-4 py-3">
         <div className="mb-2 flex items-center justify-between text-sm">
           <span className="text-white/70">Conclusão geral</span>
@@ -644,6 +667,32 @@ function IndicatorsSection() {
               </div>
             ))}
             {d.byLeader.length === 0 && <Empty>Sem líderes atribuídos.</Empty>}
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="flex items-center gap-1 text-[13px] font-semibold uppercase tracking-[0.12em] text-white/70">
+              <Users className="h-4 w-4" /> Por avaliador
+            </h3>
+            <button
+              onClick={() => exportCsv(d.byEvaluator, `avaliacoes_por_avaliador_${d.cycle!.name}.csv`, ["Avaliador", "Concluídas", "Total", "%"], ["name", "done", "total", "pct"])}
+              className="text-[11px] text-celeste underline-offset-4 hover:underline"
+            >
+              exportar CSV
+            </button>
+          </div>
+          <div className="max-h-64 space-y-2 overflow-auto pr-1">
+            {d.byEvaluator.map((r) => (
+              <div key={r.evaluator_id} className="glass-chip rounded-2xl p-3">
+                <div className="mb-1 flex justify-between text-sm">
+                  <span>{r.name}</span>
+                  <span className="text-white/70">{r.done}/{r.total} · {r.pct}%</span>
+                </div>
+                <ProgressBar pct={r.pct} />
+              </div>
+            ))}
+            {d.byEvaluator.length === 0 && <Empty>Nenhum avaliador atribuído.</Empty>}
           </div>
         </div>
       </div>

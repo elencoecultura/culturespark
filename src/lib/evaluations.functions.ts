@@ -495,14 +495,28 @@ export const getEvaluationDashboard = createServerFn({ method: "GET" })
         .maybeSingle();
       cycleId = c?.id;
     }
+    const cyclesOverview = await (async () => {
+      const { data: allCycles } = await context.supabase
+        .from("evaluation_cycles")
+        .select("status");
+      const counts = { rascunho: 0, aberto: 0, em_andamento: 0, encerrado: 0 };
+      for (const c of allCycles ?? []) {
+        const k = c.status as keyof typeof counts;
+        if (k in counts) counts[k]++;
+      }
+      return { ...counts, total: allCycles?.length ?? 0 };
+    })();
+
     if (!cycleId) {
       return {
         cycle: null,
         overall: { total: 0, done: 0, pct: 0 },
         byAttraction: [],
         byLeader: [],
+        byEvaluator: [],
         byCompetency: [],
         spirits: [],
+        cyclesOverview,
       };
     }
 
@@ -587,6 +601,42 @@ export const getEvaluationDashboard = createServerFn({ method: "GET" })
       }))
       .sort((a, b) => a.pct - b.pct);
 
+    // Por avaliador: quantas avaliações foram atribuídas a cada um vs. quantas
+    // já foram concluídas (via evaluation_evaluators, que é quem de fato avalia —
+    // diferente de byLeader, que agrupa pelo gestor do avaliado).
+    const statusByEvalId = new Map<string, string>(evalRows.map((e: any) => [e.id, e.status]));
+    const evalIdsForEvaluators = evalRows.map((e: any) => e.id);
+    const { data: assignments } = evalIdsForEvaluators.length
+      ? await context.supabase
+          .from("evaluation_evaluators")
+          .select("evaluator_id,evaluation_id")
+          .in("evaluation_id", evalIdsForEvaluators)
+      : { data: [] as any[] };
+
+    const evMap = new Map<string, { total: number; done: number }>();
+    for (const a of assignments ?? []) {
+      const row = evMap.get(a.evaluator_id) ?? { total: 0, done: 0 };
+      row.total++;
+      if (isDone(statusByEvalId.get(a.evaluation_id) ?? "")) row.done++;
+      evMap.set(a.evaluator_id, row);
+    }
+    const evaluatorIds = Array.from(evMap.keys());
+    const { data: evaluatorProfs } = evaluatorIds.length
+      ? await context.supabase.from("profiles").select("id,full_name").in("id", evaluatorIds)
+      : { data: [] as any[] };
+    const evaluatorName = new Map<string, string>(
+      (evaluatorProfs ?? []).map((p: any) => [p.id, p.full_name]),
+    );
+    const byEvaluator = Array.from(evMap.entries())
+      .map(([id, r]) => ({
+        evaluator_id: id,
+        name: evaluatorName.get(id) ?? "Avaliador",
+        total: r.total,
+        done: r.done,
+        pct: r.total ? Math.round((r.done / r.total) * 100) : 0,
+      }))
+      .sort((a, b) => a.pct - b.pct);
+
     // Competências: média das notas para avaliações desse ciclo
     const evalIds = evalRows.map((e: any) => e.id);
     const { data: scores } = evalIds.length
@@ -656,8 +706,10 @@ export const getEvaluationDashboard = createServerFn({ method: "GET" })
       overall: { total, done, pct: total ? Math.round((done / total) * 100) : 0 },
       byAttraction,
       byLeader,
+      byEvaluator,
       byCompetency,
       spirits,
+      cyclesOverview,
     };
   });
 

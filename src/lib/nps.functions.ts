@@ -7,9 +7,68 @@ async function isAdmin(supabase: any, userId: string) {
   return !!data;
 }
 
+const NPS_WINDOW_DAYS = 3;
+
+// Cadência automática do NPS: cria a pesquisa do mês no dia 1 (se ainda não
+// existir) e manda um reforço (broadcast) nos dias 2 e 3 pra quem ainda não
+// respondeu. Sem cron externo — roda de carona em toda checagem de pesquisa
+// ativa (toda vez que alguém abre a Home), então é best-effort e não pode
+// derrubar a tela se algo falhar.
+async function ensureMonthlyNpsCadence(context: { supabase: any }) {
+  try {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const { data: thisMonth } = await context.supabase
+      .from("nps_surveys")
+      .select("id, opens_at")
+      .gte("opens_at", monthStart.toISOString())
+      .order("opens_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    if (!thisMonth) {
+      const closes = new Date(now.getTime() + NPS_WINDOW_DAYS * 86_400_000);
+      await supabaseAdmin.from("nps_surveys").insert({
+        title: "Como está sua experiência este mês?",
+        question: "De 0 a 10, o quanto você recomendaria a Hector Studios pra um amigo trabalhar aqui?",
+        opens_at: now.toISOString(),
+        closes_at: closes.toISOString(),
+        active: true,
+      });
+      return;
+    }
+
+    const daysSinceOpen = Math.floor((now.getTime() - new Date(thisMonth.opens_at).getTime()) / 86_400_000);
+    if (daysSinceOpen !== 1 && daysSinceOpen !== 2) return; // só reforça nos dias 2 e 3
+
+    const category = `nps_reminder_day${daysSinceOpen + 1}`;
+    const { data: already } = await context.supabase
+      .from("notifications")
+      .select("id")
+      .eq("category", category)
+      .gte("created_at", thisMonth.opens_at)
+      .limit(1)
+      .maybeSingle();
+    if (already) return;
+
+    await supabaseAdmin.from("notifications").insert({
+      user_id: null,
+      category,
+      title: "Ainda dá tempo de responder a pesquisa NPS! ⭐",
+      body: "Sua opinião ajuda a gente a cuidar melhor da experiência do elenco. Leva menos de 1 minuto.",
+    });
+  } catch {
+    // best-effort — nunca deve quebrar a tela por causa disso
+  }
+}
+
 export const getActiveNpsSurvey = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    await ensureMonthlyNpsCadence(context);
     const nowIso = new Date().toISOString();
     const { data: survey } = await context.supabase
       .from("nps_surveys")
@@ -110,6 +169,47 @@ export const getNpsResults = createServerFn({ method: "GET" })
     const detractors = r.filter((x: any) => x.score <= 6).length;
     const nps = total ? Math.round(((promoters - detractors) / total) * 100) : 0;
     return { total, promoters, passives, detractors, nps, comments: r };
+  });
+
+export const getNpsHistory = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    if (!(await isAdmin(context.supabase, context.userId))) throw new Error("Forbidden");
+    const { data: surveys, error } = await context.supabase
+      .from("nps_surveys")
+      .select("id, title, opens_at, closes_at")
+      .order("opens_at", { ascending: true });
+    if (error) throw new Error(error.message);
+
+    const ids = (surveys ?? []).map((s) => s.id);
+    const { data: rows } = ids.length
+      ? await context.supabase.from("nps_responses").select("survey_id, score").in("survey_id", ids)
+      : { data: [] as Array<{ survey_id: string; score: number }> };
+
+    const bySurvey = new Map<string, number[]>();
+    for (const r of rows ?? []) {
+      const arr = bySurvey.get(r.survey_id) ?? [];
+      arr.push(r.score);
+      bySurvey.set(r.survey_id, arr);
+    }
+
+    const history = (surveys ?? []).map((s) => {
+      const scores = bySurvey.get(s.id) ?? [];
+      const total = scores.length;
+      const promoters = scores.filter((v) => v >= 9).length;
+      const detractors = scores.filter((v) => v <= 6).length;
+      const nps = total ? Math.round(((promoters - detractors) / total) * 100) : null;
+      return {
+        survey_id: s.id,
+        title: s.title,
+        opens_at: s.opens_at,
+        month: new Date(s.opens_at).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }),
+        total,
+        nps,
+      };
+    });
+
+    return { history };
   });
 
 export const closeNpsSurvey = createServerFn({ method: "POST" })
