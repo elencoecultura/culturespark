@@ -76,7 +76,7 @@ export default function BottomSheetModal({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-end justify-center bg-blu/60 p-3 backdrop-blur-sm"
+      className="fixed inset-0 z-40 flex items-end justify-center bg-ink/85 p-3 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
