@@ -60,7 +60,7 @@ import {
   POINT_RULES,
 } from "@/lib/gamification.functions";
 import { createIluminari, listIluminari, deleteIluminari } from "@/lib/iluminari.functions";
-import { copyPreviousWeek, listMyAbsences, registerAbsence, listTodayCheckins } from "@/lib/absences.functions";
+import { listTodayCheckins } from "@/lib/absences.functions";
 import JobsScreen from "./JobsScreen";
 import { listAllowedIps, addAllowedIp, removeAllowedIp, listBypassUsers, setWifiBypass } from "@/lib/wifi.functions";
 import PreRegistrationsAdmin from "./PreRegistrationsAdmin";
@@ -651,16 +651,7 @@ function FeedbackScreen({ canSend }: { canSend: boolean }) {
   );
 }
 
-function JourneyScreen({ myUserId }: { myUserId: string }) {
-  return (
-    <>
-      <TopBar eyebrow="Sua jornada" title="Escada pra magia" subtitle="Segurança, Alegria, Imersão e Eficiência." />
-      <MyJourney myUserId={myUserId} />
-    </>
-  );
-}
-
-// Anel de nível reutilizável (Jornada / Pontos)
+// Anel de nível reutilizável (Pontos)
 function LevelRing({ level, pct }: { level: number; pct: number }) {
   const r = 30;
   const c = 2 * Math.PI * r;
@@ -682,244 +673,6 @@ function LevelRing({ level, pct }: { level: number; pct: number }) {
         <div className="font-display text-[24px] font-black">{level}</div>
       </div>
     </div>
-  );
-}
-
-function MyJourney({ myUserId }: { myUserId: string }) {
-  const qc = useQueryClient();
-  const week = getWeekStart();
-  const nextWeek = useMemo(() => {
-    const d = new Date(week + "T00:00:00");
-    d.setDate(d.getDate() + 7);
-    return d.toISOString().slice(0, 10);
-  }, [week]);
-
-  const listFn = useServerFn(listWeekSchedule);
-  const { data: rows } = useQuery({
-    queryKey: ["schedule", week],
-    queryFn: () => listFn({ data: { week_start: week } }),
-  });
-  const mine = (rows ?? []).find((r) => r.user_id === myUserId);
-
-  const copyFn = useServerFn(copyPreviousWeek);
-  const copyMut = useMutation({
-    mutationFn: () => copyFn({ data: { target_week: nextWeek } }),
-    onSuccess: () => {
-      toast.success("Semana copiada", { description: fmtWeek(nextWeek) });
-      qc.invalidateQueries({ queryKey: ["schedule"] });
-    },
-    onError: (e: any) => {
-      const map: Record<string, string> = {
-        week_already_exists: "Já existe uma escala para a próxima semana.",
-        no_previous_week: "Você ainda não tem uma escala anterior para copiar.",
-      };
-      toast.error("Não foi possível copiar", { description: map[e.message] ?? e.message });
-    },
-  });
-
-  const absencesFn = useServerFn(listMyAbsences);
-  const { data: absences } = useQuery({
-    queryKey: ["absences", "me"],
-    queryFn: () => absencesFn(),
-  });
-
-  const gamiFn = useServerFn(getMyGamification);
-  const { data: gami } = useQuery({ queryKey: ["gamification", "me"], queryFn: () => gamiFn() });
-  const totalXp = gami?.totalXp ?? 0;
-  const lvl = levelFromXp(totalXp);
-  const toNext = Math.max(0, lvl.next - totalXp);
-  const atMax = lvl.next === lvl.cur;
-
-  const [absOpen, setAbsOpen] = useState(false);
-
-  return (
-    <>
-      <div className="mt-5">
-        <GlassCard variant="blue">
-          <div className="flex items-center gap-4">
-            <LevelRing level={lvl.level} pct={lvl.pct} />
-            <div className="min-w-0 flex-1">
-              <div className="font-display text-[20px] font-black tracking-[-0.03em]">{levelName(lvl.level)}</div>
-              <div className="mt-0.5 text-[12.5px] text-white/75">
-                {atMax ? `${totalXp} XP · nível máximo` : `${toNext} XP pro próximo nível`}
-              </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/15">
-                <span className="block h-full rounded-full bg-gradient-to-r from-celeste via-white to-pink transition-[width] duration-500" style={{ width: `${lvl.pct}%` }} />
-              </div>
-            </div>
-          </div>
-        </GlassCard>
-      </div>
-
-      <div className="mt-5 grid gap-2">
-        <SectionTitle>Roteiro</SectionTitle>
-        <GlassCard>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-[12px] uppercase tracking-[0.14em] text-white/55">Esta semana</div>
-              <div className="mt-1 font-display text-[18px] font-black tracking-[-0.02em]">{fmtWeek(week)}</div>
-              <div className="mt-1 text-[12.5px] text-white/70">
-                {mine ? `${mine.attraction} · ${mine.weekly_hours}h` : "Sem escala publicada ainda."}
-              </div>
-            </div>
-            <button
-              onClick={() => copyMut.mutate()}
-              disabled={copyMut.isPending}
-              className="glass-chip flex shrink-0 items-center gap-1.5 rounded-2xl px-3 py-2 text-[12px] font-semibold text-white disabled:opacity-60"
-            >
-              {copyMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CalendarDays size={14} />}
-              Copiar p/ próxima semana
-            </button>
-          </div>
-        </GlassCard>
-      </div>
-
-      <div className="mt-5 grid gap-2">
-        <SectionTitle
-          action={
-            <button onClick={() => setAbsOpen(true)} className="text-[12px] font-semibold text-pink underline-offset-4 hover:underline">
-              + Registrar falta
-            </button>
-          }
-        >
-          Minhas faltas
-        </SectionTitle>
-        {(absences ?? []).length === 0 ? (
-          <Notice>Nenhuma falta registrada. Em dia de falta, anexe atestado ou foto.</Notice>
-        ) : (
-          (absences ?? []).map((a) => (
-            <GlassCard key={a.id}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-display text-[16px] font-black tracking-[-0.02em]">
-                    {new Date(a.absence_date + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
-                  </div>
-                  {a.reason && <div className="mt-1 text-[12.5px] text-white/75">{a.reason}</div>}
-                  {a.attachment_url && (
-                    <a href={a.attachment_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold text-celeste underline-offset-4 hover:underline">
-                      Ver anexo <ChevronRight size={12} />
-                    </a>
-                  )}
-                </div>
-                {!a.attachment_url && (
-                  <span className="glass-chip rounded-full px-2.5 py-1 text-[10.5px] text-white/65">Sem anexo</span>
-                )}
-              </div>
-            </GlassCard>
-          ))
-        )}
-      </div>
-
-      <div className="mt-5 grid gap-3">
-        <SectionTitle>Ritual do dia</SectionTitle>
-        {[
-          { time: "14:00 · Abertura", desc: "Checklist, segurança e preparo." },
-          { time: "16:30 · Clima", desc: "Escuta rápida e apoio." },
-          { time: "18:40 · Pico", desc: "Foco em fluxo e presença." },
-          { time: "22:20 · Fechamento", desc: "Aprendizados e cuidados." },
-        ].map((t) => (
-          <GlassCard key={t.time}>
-            <div className="flex items-center gap-3">
-              <Check size={16} className="text-magic-green" />
-              <div className="min-w-0 flex-1">
-                <div className="text-[14px] font-semibold">{t.time}</div>
-                <div className="text-[12.5px] text-white/65">{t.desc}</div>
-              </div>
-            </div>
-          </GlassCard>
-        ))}
-      </div>
-
-      {absOpen && <AbsenceModal onClose={() => setAbsOpen(false)} />}
-    </>
-  );
-}
-
-function AbsenceModal({ onClose }: { onClose: () => void }) {
-  const qc = useQueryClient();
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [reason, setReason] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const register = useServerFn(registerAbsence);
-
-  async function submit() {
-    if (!date) return;
-    try {
-      setUploading(true);
-      let attachment_path: string | null = null;
-      if (file) {
-        if (file.size > 8 * 1024 * 1024) throw new Error("Arquivo acima de 8MB.");
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error("Faça login novamente.");
-        const ext = file.name.split(".").pop() || "bin";
-        const path = `${user.id}/${date}-${Date.now()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from("journey-absences").upload(path, file, {
-          contentType: file.type || undefined,
-          upsert: true,
-        });
-        if (upErr) throw new Error(upErr.message);
-        attachment_path = path;
-      }
-      await register({ data: { absence_date: date, reason: reason || null, attachment_path } });
-      toast.success("Falta registrada");
-      qc.invalidateQueries({ queryKey: ["absences"] });
-      onClose();
-    } catch (e: any) {
-      toast.error("Falhou", { description: e.message });
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  return (
-    <BottomSheetModal
-      open
-      onClose={onClose}
-      title="Registrar falta"
-      description="Adicione um motivo e, se tiver, atestado ou foto."
-    >
-      <div className="grid gap-3">
-          <label className="block">
-            <span className="text-[11px] uppercase tracking-[0.14em] text-white/60">Data</span>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="glass-input mt-1 w-full rounded-2xl px-4 py-3 text-[14px] text-white outline-none"
-            />
-          </label>
-          <label className="block">
-            <span className="text-[11px] uppercase tracking-[0.14em] text-white/60">Motivo (opcional)</span>
-            <textarea
-              value={reason}
-              onChange={(e) => setReason(e.target.value.slice(0, 400))}
-              placeholder="Ex.: consulta médica, atestado em anexo."
-              className="glass-input mt-1 min-h-[90px] w-full resize-none rounded-2xl p-3 text-[13px] outline-none placeholder:text-white/40"
-            />
-          </label>
-          <label className="block">
-            <span className="text-[11px] uppercase tracking-[0.14em] text-white/60">Atestado ou foto (opcional)</span>
-            <input
-              type="file"
-              accept="image/*,application/pdf"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="mt-1 block w-full text-[12.5px] text-white/80 file:mr-3 file:rounded-xl file:border-0 file:bg-white/15 file:px-3 file:py-2 file:text-[12px] file:font-semibold file:text-white"
-            />
-            {file && <div className="mt-1 truncate text-[11.5px] text-white/55">{file.name}</div>}
-          </label>
-          <div className="flex gap-2">
-            <button onClick={onClose} className="glass-chip flex-1 rounded-2xl py-3 text-[13px] font-semibold">Cancelar</button>
-            <button
-              onClick={submit}
-              disabled={uploading}
-              className="flex-1 rounded-2xl bg-brand-grad py-3 text-[13px] font-semibold text-white shadow-glow disabled:opacity-60"
-            >
-              {uploading ? <Loader2 size={16} className="mx-auto animate-spin" /> : "Salvar"}
-            </button>
-          </div>
-      </div>
-    </BottomSheetModal>
   );
 }
 
@@ -2198,7 +1951,7 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
 
 /* ---------- Shell ---------- */
 
-type TabId = "home" | "journey" | "feedback" | "schedule" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "culture-overview" | "install-guide";
+type TabId = "home" | "feedback" | "schedule" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "culture-overview" | "install-guide";
 
 function BottomNav({
   active,
@@ -2279,7 +2032,6 @@ export default function LinkCulturaApp() {
   const primaryTabs = useMemo(() => {
     const t: { id: TabId; label: string; icon: LucideIcon }[] = [
       { id: "home", label: "Início", icon: Home },
-      { id: "journey", label: "Jornada", icon: Compass },
     ];
     if (isLeader) {
       t.push({ id: "evals", label: "Avaliações", icon: Star });
@@ -2354,7 +2106,6 @@ export default function LinkCulturaApp() {
   const screen = useMemo(() => {
     if (isLoading) return <div className="grid place-items-center py-20"><Loader2 className="animate-spin text-white/60" /></div>;
     switch (tab) {
-      case "journey": return <JourneyScreen myUserId={profile?.id ?? ""} />;
       case "feedback": return <FeedbackScreen canSend={isLeader} />;
       case "schedule": return <ScheduleScreen canEdit={isLeader} myUserId={profile?.id ?? ""} />;
       case "team": return <TeamScreen isAdmin={isAdmin} />;
