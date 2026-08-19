@@ -51,7 +51,7 @@ import FlaggedKudosAdmin from "./FlaggedKudosAdmin";
 import { SUPREME_EMAILS } from "@/lib/wellbeing.functions";
 import { HeartCrack, Flag } from "lucide-react";
 import { listUsers, createUser, updateUser } from "@/lib/admin.functions";
-import { listWeekSchedule, upsertSchedule, ATTRACTIONS } from "@/lib/schedule.functions";
+import { ATTRACTIONS } from "@/lib/schedule.functions";
 import {
   getMyGamification,
   getAttractionLeaderboard,
@@ -528,10 +528,6 @@ function HomeScreen({ name, go, isAdmin, isLeader }: { name: string; go: (id: Ta
               <div className="mt-1 text-[11.5px] text-white/85">Registre um brilho do dia</div>
             </div>
           </Tile>
-          <Tile variant="blue" onClick={() => go("schedule")} className="flex flex-col justify-between">
-            <span className="grid h-10 w-10 place-items-center rounded-full bg-white/20"><CalendarDays size={18} /></span>
-            <div className="text-[14px] font-semibold leading-tight tracking-[-0.01em]">Roteiro</div>
-          </Tile>
           <Tile onClick={() => go("feedback")} className="flex flex-col justify-between">
             <span className="glass-chip grid h-10 w-10 place-items-center rounded-full"><MessageCircle size={18} /></span>
             <div className="text-[14px] font-semibold leading-tight tracking-[-0.01em]">Mandar um elogio</div>
@@ -774,221 +770,6 @@ function LeaderCheckinPanel({ isAdmin }: { isAdmin: boolean }) {
         ))}
       </div>
     </div>
-  );
-}
-
-
-function ScheduleScreen({ canEdit, myUserId }: { canEdit: boolean; myUserId: string }) {
-  const [week, setWeek] = useState(getWeekStart());
-  const qc = useQueryClient();
-  const listFn = useServerFn(listWeekSchedule);
-  const usersFn = useServerFn(listUsers);
-  const upsert = useServerFn(upsertSchedule);
-  const markCompletedFn = useServerFn(markScheduleCompleted);
-  const markCompleted = useMutation({
-    mutationFn: (v: { id: string; completed: boolean }) => markCompletedFn({ data: v }),
-    onSuccess: () => {
-      toast.success("Atualizado");
-      qc.invalidateQueries({ queryKey: ["schedule", week] });
-      qc.invalidateQueries({ queryKey: ["gamification"] });
-    },
-    onError: (e: any) => toast.error("Falhou", { description: e.message }),
-  });
-  const { data: rows } = useQuery({
-    queryKey: ["schedule", week],
-    queryFn: () => listFn({ data: { week_start: week } }),
-  });
-  const { data: people } = useQuery({
-    queryKey: ["users"],
-    queryFn: () => usersFn(),
-    enabled: canEdit,
-  });
-
-  const [editing, setEditing] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    attraction: ATTRACTIONS[0] as string,
-    weekly_hours: 44,
-    days_off: [] as string[],
-    notes: "",
-  });
-
-  const m = useMutation({
-    mutationFn: (user_id: string) =>
-      upsert({
-        data: {
-          week_start: week,
-          user_id,
-          attraction: form.attraction,
-          weekly_hours: form.weekly_hours,
-          days_off: form.days_off,
-          notes: form.notes || null,
-        },
-      }),
-    onSuccess: () => {
-      toast.success("Escala salva");
-      setEditing(null);
-      qc.invalidateQueries({ queryKey: ["schedule", week] });
-    },
-    onError: (e: any) => toast.error("Falhou", { description: e.message }),
-  });
-
-  const visibleRows = canEdit ? rows ?? [] : (rows ?? []).filter((r) => r.user_id === myUserId);
-  const missing = canEdit
-    ? (people ?? []).filter((p) => !(rows ?? []).some((r) => r.user_id === p.id))
-    : [];
-
-  function shiftWeek(delta: number) {
-    const d = new Date(week + "T00:00:00");
-    d.setDate(d.getDate() + delta * 7);
-    setWeek(d.toISOString().slice(0, 10));
-  }
-
-  function toggleDay(day: string) {
-    setForm((f) => ({
-      ...f,
-      days_off: f.days_off.includes(day) ? f.days_off.filter((d) => d !== day) : [...f.days_off, day],
-    }));
-  }
-
-  function startEdit(userId: string, existing?: any) {
-    setEditing(userId);
-    setForm({
-      attraction: existing?.attraction ?? ATTRACTIONS[0],
-      weekly_hours: existing?.weekly_hours ?? 44,
-      days_off: existing?.days_off ?? [],
-      notes: existing?.notes ?? "",
-    });
-  }
-
-  return (
-    <>
-      <TopBar
-        eyebrow="Roteiro da semana"
-        title={canEdit ? "Publicar a semana" : "Sua semana"}
-        subtitle={canEdit ? "Líderes alimentam até domingo 20h." : "Atração, folgas e carga horária."}
-      />
-      <div className="mt-5 flex items-center justify-between gap-2">
-        <button onClick={() => shiftWeek(-1)} className="glass-chip rounded-full px-3 py-2 text-[12px]">‹ semana</button>
-        <div className="text-[12.5px] font-medium text-white/80">{fmtWeek(week)}</div>
-        <button onClick={() => shiftWeek(1)} className="glass-chip rounded-full px-3 py-2 text-[12px]">semana ›</button>
-      </div>
-
-      <div className="mt-4 grid gap-3">
-        {visibleRows.length === 0 && !canEdit && (
-          <Notice>Ainda sem roteiro. Quando o líder publicar, aparece aqui.</Notice>
-        )}
-        {visibleRows.map((r) => (
-          <GlassCard key={r.id}>
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="font-display text-[18px] font-black tracking-[-0.02em]">
-                  {r.profile?.full_name || "Sem nome"}
-                </div>
-                <div className="text-[12px] uppercase tracking-[0.14em] text-white/55">{r.attraction}</div>
-              </div>
-              <span className="glass-chip rounded-full px-3 py-1 text-[11px] font-semibold">{r.weekly_hours}h</span>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {DAYS.map((d) => {
-                const off = (r.days_off ?? []).includes(d);
-                return (
-                  <span key={d} className={cn("rounded-full px-2.5 py-1 text-[11px] font-medium", off ? "bg-pink/30 text-white" : "glass-chip text-white/65")}>
-                    {d}{off ? " · folga" : ""}
-                  </span>
-                );
-              })}
-            </div>
-            {r.notes && <div className="mt-3 text-[12.5px] text-white/65">{r.notes}</div>}
-            <div className="mt-3 flex items-center gap-3">
-              {r.completed_full ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-magic-green/25 px-2.5 py-1 text-[11px] font-semibold text-white">
-                  <Check size={12} /> Semana cumprida
-                </span>
-              ) : (
-                <span className="glass-chip rounded-full px-2.5 py-1 text-[11px] text-white/65">A confirmar</span>
-              )}
-              {canEdit && (
-                <>
-                  <button onClick={() => startEdit(r.user_id, r)} className="text-[12px] font-semibold text-pink underline-offset-4 hover:underline">
-                    Editar
-                  </button>
-                  <button
-                    onClick={() => markCompleted.mutate({ id: r.id, completed: !r.completed_full })}
-                    className="ml-auto text-[12px] font-semibold text-white/85 underline-offset-4 hover:underline"
-                  >
-                    {r.completed_full ? "Desmarcar" : "Marcar cumprida (+20)"}
-                  </button>
-                </>
-              )}
-            </div>
-          </GlassCard>
-        ))}
-
-        {canEdit && missing.length > 0 && (
-          <>
-            <SectionTitle>Pendentes nesta semana</SectionTitle>
-            {missing.map((p) => (
-              <GlassCard key={p.id}>
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-[14px] font-semibold">{p.full_name || p.email}</div>
-                    <div className="text-[11.5px] text-white/55">{p.attraction ?? "sem atração definida"}</div>
-                  </div>
-                  <button onClick={() => startEdit(p.id, { attraction: p.attraction, weekly_hours: p.weekly_hours, days_off: p.days_off })} className="rounded-2xl bg-white px-3 py-2 text-[12px] font-semibold text-blu">
-                    Publicar
-                  </button>
-                </div>
-              </GlassCard>
-            ))}
-          </>
-        )}
-      </div>
-
-      <BottomSheetModal open={!!editing && canEdit} onClose={() => setEditing(null)} title="Editar escala">
-            <div className="grid gap-3">
-              <label className="block">
-                <span className="text-[11px] uppercase tracking-[0.14em] text-white/60">Atração</span>
-                <select value={form.attraction} onChange={(e) => setForm({ ...form, attraction: e.target.value })} className="glass-input mt-1 w-full rounded-2xl px-4 py-3 text-[14px] text-white outline-none">
-                  {ATTRACTIONS.map((a) => <option key={a} value={a} className="text-blu">{a}</option>)}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-[11px] uppercase tracking-[0.14em] text-white/60">Carga horária semanal</span>
-                <input
-                  type="number"
-                  value={form.weekly_hours}
-                  onChange={(e) => setForm({ ...form, weekly_hours: Number(e.target.value) })}
-                  className="glass-input mt-1 w-full rounded-2xl px-4 py-3 text-[14px] text-white outline-none"
-                />
-              </label>
-              <div>
-                <span className="text-[11px] uppercase tracking-[0.14em] text-white/60">Folgas</span>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {DAYS.map((d) => {
-                    const on = form.days_off.includes(d);
-                    return (
-                      <button key={d} onClick={() => toggleDay(d)} className={cn("rounded-full px-3 py-1.5 text-[12px] font-medium", on ? "bg-pink-grad text-white shadow-glow" : "glass-chip text-white/75")}>
-                        {d}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <textarea
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                placeholder="Notas (opcional)"
-                className="glass-input min-h-[80px] w-full resize-none rounded-2xl p-3 text-[13px] outline-none placeholder:text-white/40"
-              />
-              <div className="flex gap-2">
-                <button onClick={() => setEditing(null)} className="glass-chip flex-1 rounded-2xl py-3 text-[13px] font-semibold">Cancelar</button>
-                <button onClick={() => editing && m.mutate(editing)} disabled={m.isPending} className="flex-1 rounded-2xl bg-brand-grad py-3 text-[13px] font-semibold text-white shadow-glow disabled:opacity-60">
-                  {m.isPending ? <Loader2 size={16} className="mx-auto animate-spin" /> : "Salvar"}
-                </button>
-              </div>
-            </div>
-      </BottomSheetModal>
-    </>
   );
 }
 
@@ -1951,7 +1732,7 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
 
 /* ---------- Shell ---------- */
 
-type TabId = "home" | "feedback" | "schedule" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "culture-overview" | "install-guide";
+type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "culture-overview" | "install-guide";
 
 function BottomNav({
   active,
@@ -2051,7 +1832,6 @@ export default function LinkCulturaApp() {
         { id: "bussola", label: "Bússola das Essências", icon: Compass, desc: "Mapeamento comportamental (1x/ano)" },
         { id: "birthdays", label: "Aniversários", icon: Cake, desc: "Quem faz aniversário na semana" },
         { id: "iluminari", label: "Iluminari", icon: Sun, desc: "Compartilhar um momento" },
-        { id: "schedule", label: "Roteiro", icon: CalendarDays, desc: "Sua escala da semana" },
         { id: "feedback", label: "Elogio Rápido", icon: MessageCircle, desc: "Envie e veja reconhecimentos" },
         { id: "install-guide", label: "Instalar o app", icon: Download, desc: "Passo a passo pra iPhone e Android" },
       ],
@@ -2107,7 +1887,6 @@ export default function LinkCulturaApp() {
     if (isLoading) return <div className="grid place-items-center py-20"><Loader2 className="animate-spin text-white/60" /></div>;
     switch (tab) {
       case "feedback": return <FeedbackScreen canSend={isLeader} />;
-      case "schedule": return <ScheduleScreen canEdit={isLeader} myUserId={profile?.id ?? ""} />;
       case "team": return <TeamScreen isAdmin={isAdmin} />;
       case "leader": return <LeaderScreen isAdmin={isAdmin} />;
       case "points": return <GamificationScreen myUserId={profile?.id ?? ""} />;
