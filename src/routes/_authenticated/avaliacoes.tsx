@@ -1063,12 +1063,27 @@ function CompetencyRow({ comp, current, onScore }: { comp: any; current: number;
   const expected = Number(comp.expected_score ?? 4);
   const below = current > 0 && current < expected;
   const met = current >= expected && current > 0;
+  const [showGuide, setShowGuide] = useState(false);
   return (
     <div className={cn("rounded-2xl border p-3", below ? "border-magic-red/40 bg-magic-red/[0.07]" : "border-white/10 bg-white/[0.04]")}>
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-sm font-semibold">{comp.name}</div>
           {comp.description && <div className="mt-0.5 text-[11.5px] leading-snug text-white/55">{comp.description}</div>}
+          {comp.how_to_evaluate && (
+            <button
+              type="button"
+              onClick={() => setShowGuide((v) => !v)}
+              className="mt-1.5 flex items-center gap-1 text-[11px] font-semibold text-celeste"
+            >
+              <HelpCircle className="h-3 w-3" /> Como avaliar essa competência
+            </button>
+          )}
+          {showGuide && comp.how_to_evaluate && (
+            <div className="mt-1.5 rounded-xl bg-celeste/10 p-2.5 text-[11.5px] leading-snug text-white/80">
+              {comp.how_to_evaluate}
+            </div>
+          )}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <span className="glass-chip rounded-full px-2 py-0.5 text-[10px] text-white/70">esperado {expected}</span>

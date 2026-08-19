@@ -114,6 +114,7 @@ export type Database = {
           created_at: string
           description: string | null
           expected_score: number
+          how_to_evaluate: string | null
           id: string
           name: string
           pillar_id: string
@@ -125,6 +126,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           expected_score?: number
+          how_to_evaluate?: string | null
           id?: string
           name: string
           pillar_id: string
@@ -136,6 +138,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           expected_score?: number
+          how_to_evaluate?: string | null
           id?: string
           name?: string
           pillar_id?: string
