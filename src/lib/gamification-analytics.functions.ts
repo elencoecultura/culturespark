@@ -4,8 +4,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const POINT_LABELS: Record<string, string> = {
   checkin: "Check-in de humor",
-  kudos_sent: "Toque enviado",
-  kudos_received: "Toque recebido",
+  kudos_sent: "Elogio enviado",
+  kudos_received: "Elogio recebido",
   journey_step: "Passo da jornada",
   schedule_completed: "Semana cumprida",
 };

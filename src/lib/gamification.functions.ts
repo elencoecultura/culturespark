@@ -4,8 +4,8 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 export const POINT_RULES = [
   { kind: "checkin", label: "Check-in de humor", points: 5, hint: "1x por dia" },
-  { kind: "kudos_sent", label: "Toque enviado", points: 3, hint: "" },
-  { kind: "kudos_received", label: "Toque recebido", points: 5, hint: "" },
+  { kind: "kudos_sent", label: "Elogio enviado", points: 3, hint: "" },
+  { kind: "kudos_received", label: "Elogio recebido", points: 5, hint: "" },
   { kind: "journey_step", label: "Passo da jornada", points: 10, hint: "" },
   { kind: "schedule_completed", label: "Semana cumprida", points: 20, hint: "marcada pelo líder" },
 ] as const;

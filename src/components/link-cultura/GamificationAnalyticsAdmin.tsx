@@ -34,8 +34,8 @@ const ROLES = [
 
 const KINDS = [
   { key: "checkin", label: "Check-in de humor" },
-  { key: "kudos_sent", label: "Toque enviado" },
-  { key: "kudos_received", label: "Toque recebido" },
+  { key: "kudos_sent", label: "Elogio enviado" },
+  { key: "kudos_received", label: "Elogio recebido" },
   { key: "journey_step", label: "Passo da jornada" },
   { key: "schedule_completed", label: "Semana cumprida" },
 ];

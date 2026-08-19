@@ -8,7 +8,7 @@ export const Route = createFileRoute("/_authenticated/app")({
       {
         name: "description",
         content:
-          "App de cultura e engajamento da Hector Studios: check-in, jornada, toques e visão do líder.",
+          "App de cultura e engajamento da Hector Studios: check-in, jornada, elogios rápidos e visão do líder.",
       },
     ],
   }),

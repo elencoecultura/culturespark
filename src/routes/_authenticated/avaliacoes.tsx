@@ -41,6 +41,7 @@ import {
   FileText,
   BarChart3,
   TrendingDown,
+  TrendingUp,
   Users,
   Upload,
   Bell,
@@ -808,8 +809,7 @@ function EvaluationDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
             <ScaleHelp />
 
-            <SpiritSection evaluation={ev} onSet={(key, value) => spiritsMut.mutate({ [key]: value })} />
-
+            <SectionHeader icon={TrendingUp} title="Escada pra Magia" />
             {pillars.map((p: any) => (
               <PillarSection
                 key={p.id}
@@ -819,6 +819,8 @@ function EvaluationDetail({ id, onBack }: { id: string; onBack: () => void }) {
                 onScore={(competency_id, score) => saveMut.mutate({ competency_id, score })}
               />
             ))}
+
+            <SpiritSection evaluation={ev} onSet={(key, value) => spiritsMut.mutate({ [key]: value })} />
 
             <PdiSection evaluationId={id} pdis={d.data?.pdis ?? []} comps={comps} />
             <DocumentsSection evaluationId={id} />

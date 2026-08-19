@@ -689,6 +689,8 @@ export type Database = {
         Row: {
           category: string | null
           created_at: string
+          flag_reason: string | null
+          flagged: boolean
           from_user: string
           id: string
           message: string
@@ -697,6 +699,8 @@ export type Database = {
         Insert: {
           category?: string | null
           created_at?: string
+          flag_reason?: string | null
+          flagged?: boolean
           from_user: string
           id?: string
           message: string
@@ -705,6 +709,8 @@ export type Database = {
         Update: {
           category?: string | null
           created_at?: string
+          flag_reason?: string | null
+          flagged?: boolean
           from_user?: string
           id?: string
           message?: string

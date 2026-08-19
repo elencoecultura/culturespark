@@ -47,8 +47,9 @@ import { listWeekBirthdays } from "@/lib/birthdays.functions";
 import { getDiscStatus } from "@/lib/disc.functions";
 import Bussola, { BussolaAdmin } from "./Bussola";
 import WellbeingAdmin from "./WellbeingAdmin";
+import FlaggedKudosAdmin from "./FlaggedKudosAdmin";
 import { SUPREME_EMAILS } from "@/lib/wellbeing.functions";
-import { HeartCrack } from "lucide-react";
+import { HeartCrack, Flag } from "lucide-react";
 import { listUsers, createUser, updateUser } from "@/lib/admin.functions";
 import { listWeekSchedule, upsertSchedule, ATTRACTIONS } from "@/lib/schedule.functions";
 import {
@@ -452,7 +453,7 @@ function HomeScreen({ name, go, isAdmin, isLeader }: { name: string; go: (id: Ta
           </Tile>
           <Tile onClick={() => go("feedback")} className="flex flex-col justify-between">
             <span className="glass-chip grid h-10 w-10 place-items-center rounded-full"><MessageCircle size={18} /></span>
-            <div className="text-[14px] font-semibold leading-tight tracking-[-0.01em]">Mandar um toque</div>
+            <div className="text-[14px] font-semibold leading-tight tracking-[-0.01em]">Mandar um elogio</div>
           </Tile>
           {isLeader && (
             <Tile href="/avaliacoes" className="col-span-2 flex items-center gap-3">
@@ -495,7 +496,7 @@ function FeedbackScreen({ canSend }: { canSend: boolean }) {
   const m = useMutation({
     mutationFn: () => send({ data: { to_user: to, message: msg } }),
     onSuccess: () => {
-      toast.success("Toque enviado", { description: "Pequenos gestos sustentam a cultura." });
+      toast.success("Elogio enviado", { description: "Pequenos gestos sustentam a cultura." });
       setMsg("");
       qc.invalidateQueries({ queryKey: ["kudos"] });
       qc.invalidateQueries({ queryKey: ["gamification"] });
@@ -510,7 +511,7 @@ function FeedbackScreen({ canSend }: { canSend: boolean }) {
 
   return (
     <>
-      <TopBar eyebrow="Toques" title="Reconhecer faz girar" subtitle="Pequenos gestos sustentam a cultura." />
+      <TopBar eyebrow="Elogio Rápido" title="Reconhecer faz girar" subtitle="Pequenos gestos sustentam a cultura." />
       {canSend && (
         <div className="glass-soft mt-5 grid grid-cols-2 gap-1 rounded-full p-1">
           {(["send", "inbox"] as const).map((id) => (
@@ -548,7 +549,7 @@ function FeedbackScreen({ canSend }: { canSend: boolean }) {
             disabled={!to || msg.length < 2 || m.isPending}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-grad px-5 py-4 text-[15px] font-semibold text-white shadow-glow transition active:scale-[0.99] disabled:opacity-50"
           >
-            {m.isPending ? <Loader2 size={18} className="animate-spin" /> : <>Mandar toque <Send size={16} /></>}
+            {m.isPending ? <Loader2 size={18} className="animate-spin" /> : <>Mandar elogio <Send size={16} /></>}
           </button>
         </div>
       ) : (
@@ -1890,7 +1891,7 @@ function BirthdaysScreen({ myUserId }: { myUserId: string }) {
       }),
     onSuccess: (_r, to) => {
       setSent((s) => new Set(s).add(to));
-      toast.success("Parabéns enviado", { description: "Seu toque chegou pra pessoa." });
+      toast.success("Parabéns enviado", { description: "Seu elogio chegou pra pessoa." });
       qc.invalidateQueries({ queryKey: ["kudos"] });
     },
     onError: (e: any) => toast.error("Não rolou", { description: e.message }),
@@ -2116,7 +2117,7 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
 
 /* ---------- Shell ---------- */
 
-type TabId = "home" | "journey" | "feedback" | "schedule" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing";
+type TabId = "home" | "journey" | "feedback" | "schedule" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos";
 
 function BottomNav({
   active,
@@ -2218,7 +2219,7 @@ export default function LinkCulturaApp() {
         { id: "birthdays", label: "Aniversários", icon: Cake, desc: "Quem faz aniversário na semana" },
         { id: "iluminari", label: "Iluminari", icon: Sun, desc: "Compartilhar um momento" },
         { id: "schedule", label: "Roteiro", icon: CalendarDays, desc: "Sua escala da semana" },
-        { id: "feedback", label: "Toques", icon: MessageCircle, desc: "Envie e veja reconhecimentos" },
+        { id: "feedback", label: "Elogio Rápido", icon: MessageCircle, desc: "Envie e veja reconhecimentos" },
       ],
     });
 
@@ -2235,6 +2236,7 @@ export default function LinkCulturaApp() {
     if (isAdmin) {
       const adminItems: { id: TabId; label: string; icon: LucideIcon; desc: string }[] = [
         { id: "broadcast", label: "Enviar recado", icon: Send, desc: "Notificar todo o elenco" },
+        { id: "flagged-kudos", label: "Elogios sinalizados", icon: Flag, desc: "Revisar mensagens marcadas pela moderação" },
         { id: "disc-admin", label: "Bússola do time", icon: Compass, desc: "Perfis comportamentais (quem consentiu)" },
         { id: "hierarquia", label: "Elenco & Hierarquia", icon: Users, desc: "Definir líder e co-líder de cada pessoa" },
         { id: "pre-reg", label: "Pré-cadastro", icon: UserPlus, desc: "Importar planilha do elenco" },
@@ -2280,6 +2282,7 @@ export default function LinkCulturaApp() {
       case "bussola": return <Bussola name={name} />;
       case "disc-admin": return <BussolaAdmin />;
       case "wellbeing": return <WellbeingAdmin />;
+      case "flagged-kudos": return <FlaggedKudosAdmin />;
       case "vagas": return <JobsScreen isAdmin={isAdmin} />;
       case "wifi": return <WifiAllowlistScreen />;
       case "pre-reg": return <PreRegistrationsAdmin />;
