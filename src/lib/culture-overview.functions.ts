@@ -72,7 +72,9 @@ export const getCultureOverview = createServerFn({ method: "GET" })
       .select("id", { count: "exact", head: true })
       .gte("triggered_at", since30);
 
-    const { count: kudosCount } = await context.supabase
+    // kudos agora é privado (só remetente/destinatário via RLS) — usa
+    // service role aqui pra continuar contando o volume total do time.
+    const { count: kudosCount } = await supabaseAdmin
       .from("kudos")
       .select("id", { count: "exact", head: true })
       .gte("created_at", since30);

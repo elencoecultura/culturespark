@@ -196,9 +196,11 @@ export const sendKudos = createServerFn({ method: "POST" })
 export const listKudos = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    // Privado: só quem mandou ou recebeu vê o elogio — nunca um feed público.
     const { data, error } = await context.supabase
       .from("kudos")
       .select("*")
+      .or(`from_user.eq.${context.userId},to_user.eq.${context.userId}`)
       .order("created_at", { ascending: false })
       .limit(30);
     if (error) throw new Error(error.message);
