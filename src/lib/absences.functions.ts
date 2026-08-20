@@ -130,7 +130,7 @@ export const listTodayCheckins = createServerFn({ method: "POST" })
     );
     const hasLeadershipRole = roleChecks.some((r) => r.data);
     if (!hasLeadershipRole) throw new Error("Forbidden");
-    const isAdmin = roleChecks[0]?.data;
+    const [isAdmin, , , isGerente, isDirecao] = roleChecks.map((r) => r.data);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -140,9 +140,14 @@ export const listTodayCheckins = createServerFn({ method: "POST" })
       .eq("id", context.userId)
       .maybeSingle();
     // "TODOS" é o valor especial de quem enxerga tudo (ex.: gerente de todos
-    // os restaurantes). Só admin ou "TODOS" podem escolher outra atração —
-    // qualquer outro líder/gerente fica travado na própria, sempre.
-    const seesAll = isAdmin || myProfile?.attraction === "TODOS" || myProfile?.negocio === "TODOS";
+    // os restaurantes).
+    const hasTodosScope = myProfile?.attraction === "TODOS" || myProfile?.negocio === "TODOS";
+    const seesAll = isAdmin || hasTodosScope;
+    // Gerente/direção enxergam a atração inteira (todos os times dela).
+    // Líder enxerga só o próprio time — várias lideranças podem dividir a
+    // mesma atração (ex.: 3 líderes de salão na mesma pizzaria), então
+    // escopo de líder é sempre por manager_id, nunca por atração.
+    const seesWholeAttraction = seesAll || isGerente || isDirecao;
 
     let q = supabaseAdmin
       .from("profiles")
@@ -150,8 +155,10 @@ export const listTodayCheckins = createServerFn({ method: "POST" })
       .eq("active", true);
     if (seesAll) {
       if (data.attraction) q = q.eq("attraction", data.attraction);
-    } else {
+    } else if (seesWholeAttraction) {
       q = q.eq("attraction", myProfile?.attraction ?? "__none__");
+    } else {
+      q = q.eq("manager_id", context.userId);
     }
     const { data: people, error } = await q;
     if (error) throw new Error(error.message);
