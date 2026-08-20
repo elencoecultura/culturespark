@@ -130,13 +130,29 @@ export const listTodayCheckins = createServerFn({ method: "POST" })
     );
     const hasLeadershipRole = roleChecks.some((r) => r.data);
     if (!hasLeadershipRole) throw new Error("Forbidden");
+    const isAdmin = roleChecks[0]?.data;
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: myProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("attraction, negocio")
+      .eq("id", context.userId)
+      .maybeSingle();
+    // "TODOS" é o valor especial de quem enxerga tudo (ex.: gerente de todos
+    // os restaurantes). Só admin ou "TODOS" podem escolher outra atração —
+    // qualquer outro líder/gerente fica travado na própria, sempre.
+    const seesAll = isAdmin || myProfile?.attraction === "TODOS" || myProfile?.negocio === "TODOS";
+
     let q = supabaseAdmin
       .from("profiles")
       .select("id, full_name, attraction, active")
       .eq("active", true);
-    if (data.attraction) q = q.eq("attraction", data.attraction);
+    if (seesAll) {
+      if (data.attraction) q = q.eq("attraction", data.attraction);
+    } else {
+      q = q.eq("attraction", myProfile?.attraction ?? "__none__");
+    }
     const { data: people, error } = await q;
     if (error) throw new Error(error.message);
 
