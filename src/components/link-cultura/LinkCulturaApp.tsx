@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useRef, type ReactNode } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { MoreHorizontal, Compass, Briefcase, Wifi, Plus, BarChart3, Cake, PartyPopper, Gift, Gauge, Download } from "lucide-react";
+import { MoreHorizontal, Compass, Briefcase, Wifi, Plus, BarChart3, Cake, PartyPopper, Gift, Gauge, Download, KeyRound } from "lucide-react";
 import {
   Home,
   Heart,
@@ -72,6 +72,7 @@ import { getDailyPhrase, getPillar } from "@/lib/culture-content";
 import { NotificationsBell, BroadcastAdminScreen } from "./Notifications";
 import { NpsBanner, HomeNotifications } from "./HomeExtras";
 import CultureOverview from "./CultureOverview";
+import AccountsAdmin from "./AccountsAdmin";
 import InstallGuide from "./InstallGuide";
 
 
@@ -334,11 +335,12 @@ function EnergyScale({ value, onChange }: { value: number | null; onChange: (n: 
 }
 
 // Check-in de energia inline (substitui a antiga aba Humor)
-function EnergyCheckin({ name, streak }: { name: string; streak: number }) {
+function EnergyCheckin({ name, streak, doneToday }: { name: string; streak: number; doneToday: boolean }) {
   const qc = useQueryClient();
   const submitFn = useServerFn(submitMood);
   const [mood, setMood] = useState<number | null>(null);
   const [done, setDone] = useState(false);
+  const isDone = done || doneToday;
   const hour = new Date().getHours();
   const greet = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
   const m = useMutation({
@@ -357,13 +359,13 @@ function EnergyCheckin({ name, streak }: { name: string; streak: number }) {
         <div className="min-w-0">
           <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/55">{greet}, {name || "elenco"}</div>
           <h1 className="mt-1.5 font-display text-[28px] font-black leading-[1.02] tracking-[-0.03em] text-white text-balance">
-            {done ? "Energia registrada!" : "Como está sua energia?"}
+            {isDone ? "Energia registrada!" : "Como está sua energia?"}
           </h1>
         </div>
         <StreakRing value={streak} />
       </div>
 
-      {done ? (
+      {isDone ? (
         <div className="glass-chip mt-5 inline-flex items-center gap-2 rounded-full px-4 py-3 text-[13px] font-semibold text-white">
           <Check size={16} className="text-magic-green" /> Valeu por cuidar do clima. Até amanhã.
         </div>
@@ -490,13 +492,15 @@ function HomeScreen({ name, go, isAdmin, isLeader }: { name: string; go: (id: Ta
   const fn = useServerFn(listMyMoods);
   const { data: moods } = useQuery({ queryKey: ["moods", "me"], queryFn: () => fn() });
   const streak = moods?.length ?? 0;
+  const todayKey = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  const doneToday = !!moods?.[0] && new Date(moods[0].created_at).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }) === todayKey;
   const phrase = getDailyPhrase();
   const pillar = getPillar(phrase.pillar);
   return (
     <>
       {/* Hero — check-in de energia inline, sem card */}
       <div className="mt-3">
-        <EnergyCheckin name={name} streak={streak} />
+        <EnergyCheckin name={name} streak={streak} doneToday={doneToday} />
       </div>
 
       {/* Frase do dia — tratamento editorial */}
@@ -1732,7 +1736,7 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
 
 /* ---------- Shell ---------- */
 
-type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "culture-overview" | "install-guide";
+type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "culture-overview" | "install-guide" | "accounts-admin";
 
 function BottomNav({
   active,
@@ -1850,6 +1854,7 @@ export default function LinkCulturaApp() {
     if (isAdmin) {
       const adminItems: { id: TabId; label: string; icon: LucideIcon; desc: string }[] = [
         { id: "culture-overview", label: "Indicadores de cultura", icon: Gauge, desc: "Painel geral com tudo num só lugar" },
+        { id: "accounts-admin", label: "Contas cadastradas", icon: KeyRound, desc: "Trocar email, senha ou gerar link de acesso" },
         { id: "broadcast", label: "Enviar recado", icon: Send, desc: "Notificar todo o elenco" },
         { id: "flagged-kudos", label: "Elogios sinalizados", icon: Flag, desc: "Revisar mensagens marcadas pela moderação" },
         { id: "disc-admin", label: "Bússola do time", icon: Compass, desc: "Perfis comportamentais (quem consentiu)" },
@@ -1897,6 +1902,7 @@ export default function LinkCulturaApp() {
       case "wellbeing": return <WellbeingAdmin />;
       case "flagged-kudos": return <FlaggedKudosAdmin />;
       case "culture-overview": return <CultureOverview />;
+      case "accounts-admin": return <AccountsAdmin />;
       case "install-guide": return <InstallGuide />;
       case "vagas": return <JobsScreen isAdmin={isAdmin} />;
       case "wifi": return <WifiAllowlistScreen />;

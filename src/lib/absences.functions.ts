@@ -121,15 +121,15 @@ export const listTodayCheckins = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ attraction: z.string().optional().nullable() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { data: isAdmin } = await context.supabase.rpc("has_role", {
-      _user_id: context.userId,
-      _role: "admin",
-    });
-    const { data: isLeader } = await context.supabase.rpc("has_role", {
-      _user_id: context.userId,
-      _role: "leader",
-    });
-    if (!isAdmin && !isLeader) throw new Error("Forbidden");
+    // Qualquer papel de liderança pode ver os check-ins — antes só "admin" e
+    // "leader" passavam, deixando gerente/líder ("lider")/direção de fora
+    // (era exatamente o caso de um gerente que enxerga várias atrações).
+    const LEADERSHIP_ROLES = ["admin", "leader", "lider", "gerente", "direcao"] as const;
+    const roleChecks = await Promise.all(
+      LEADERSHIP_ROLES.map((role) => context.supabase.rpc("has_role", { _user_id: context.userId, _role: role })),
+    );
+    const hasLeadershipRole = roleChecks.some((r) => r.data);
+    if (!hasLeadershipRole) throw new Error("Forbidden");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     let q = supabaseAdmin
