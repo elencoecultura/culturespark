@@ -788,7 +788,7 @@ function TeamScreen({ isAdmin }: { isAdmin: boolean }) {
     email: "",
     password: "",
     full_name: "",
-    role: "messenger" as "admin" | "leader" | "messenger",
+    role: "elenco" as "admin" | "direcao" | "gerente" | "lider" | "elenco",
     attraction: ATTRACTIONS[0] as string,
     weekly_hours: 44,
   });
@@ -873,8 +873,10 @@ function TeamScreen({ isAdmin }: { isAdmin: boolean }) {
               <label className="block">
                 <span className="text-[11px] uppercase tracking-[0.14em] text-white/60">Papel</span>
                 <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as any })} className="glass-input mt-1 w-full rounded-2xl px-4 py-3 text-[14px] text-white outline-none">
-                  <option value="messenger" className="text-blu">Mensageiro</option>
-                  <option value="leader" className="text-blu">Líder</option>
+                  <option value="elenco" className="text-blu">Elenco</option>
+                  <option value="lider" className="text-blu">Líder</option>
+                  <option value="gerente" className="text-blu">Gerente</option>
+                  <option value="direcao" className="text-blu">Direção</option>
                   <option value="admin" className="text-blu">Admin</option>
                 </select>
               </label>

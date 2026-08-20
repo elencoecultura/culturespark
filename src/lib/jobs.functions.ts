@@ -63,8 +63,11 @@ const jobInput = z.object({
 async function ensureLeaderOrAdmin(supabase: any, userId: string) {
   const { data: isAdmin } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
   if (isAdmin) return { isAdmin: true, isLeader: true };
-  const { data: isLeader } = await supabase.rpc("has_role", { _user_id: userId, _role: "leader" });
-  if (!isLeader) throw new Error("Forbidden");
+  // "leader" não existe mais como papel (virou "lider"/"gerente"/"direcao").
+  const checks = await Promise.all(
+    ["lider", "leader", "gerente", "direcao"].map((role) => supabase.rpc("has_role", { _user_id: userId, _role: role })),
+  );
+  if (!checks.some((c: any) => c.data)) throw new Error("Forbidden");
   return { isAdmin: false, isLeader: true };
 }
 async function ensureAdmin(supabase: any, userId: string) {

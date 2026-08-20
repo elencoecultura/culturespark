@@ -13,6 +13,7 @@ const POINT_LABELS: Record<string, string> = {
 
 
 type RolesCtx = {
+  userId: string;
   isAdmin: boolean;
   isDirecao: boolean;
   isGerente: boolean;
@@ -55,6 +56,7 @@ async function resolveScope(context: {
     throw new Error("Acesso restrito a admin, direção, gerente ou líder.");
   }
   return {
+    userId: context.userId,
     isAdmin,
     isDirecao,
     isGerente,
@@ -67,8 +69,11 @@ async function resolveScope(context: {
 /**
  * Returns the set of user_ids the caller is allowed to see in analytics.
  * - Admin/Direção: everyone
- * - Gerente: same `negocio`
- * - Líder: same `attraction`
+ * - Gerente: same `negocio` (a atração/casa inteira)
+ * - Líder: só quem tem manager_id apontando pro próprio líder (o time
+ *   direto dele — várias lideranças podem dividir a mesma atração, então
+ *   nunca escopa líder por atração, só por manager_id, igual ao painel
+ *   de check-ins).
  * Returns null when there is no restriction.
  */
 function allowedIdsFor(
@@ -79,7 +84,7 @@ function allowedIdsFor(
   const ids = new Set<string>();
   for (const p of profiles) {
     if (scope.isGerente && scope.negocio && p.negocio === scope.negocio) ids.add(p.id);
-    else if (scope.isLider && scope.attraction && p.attraction === scope.attraction) ids.add(p.id);
+    else if (scope.isLider && p.manager_id === scope.userId) ids.add(p.id);
   }
   return ids;
 }
@@ -175,6 +180,7 @@ type ProfileRow = {
   negocio: string | null;
   setor: string | null;
   attraction: string | null;
+  manager_id?: string | null;
 };
 
 type RoleRow = { user_id: string; role: string };
@@ -205,7 +211,7 @@ export const getGamificationAnalytics = createServerFn({ method: "POST" })
     // Resolve users + roles up front.
     const { data: profiles } = await context.supabase
       .from("profiles")
-      .select("id, full_name, negocio, setor, attraction");
+      .select("id, full_name, negocio, setor, attraction, manager_id");
     const profById = new Map<string, ProfileRow>(
       (profiles ?? []).map((p) => [p.id as string, p as ProfileRow]),
     );
@@ -375,7 +381,7 @@ export const listAnalyticsMembers = createServerFn({ method: "GET" })
     const scope = await resolveScope(context as unknown as Parameters<typeof resolveScope>[0]);
     const { data: profiles, error } = await context.supabase
       .from("profiles")
-      .select("id, full_name, negocio, attraction, active")
+      .select("id, full_name, negocio, attraction, active, manager_id")
       .eq("active", true)
       .order("full_name", { ascending: true });
     if (error) throw new Error(error.message);

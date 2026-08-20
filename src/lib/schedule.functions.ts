@@ -43,15 +43,13 @@ export const upsertSchedule = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { data: isAdmin } = await context.supabase.rpc("has_role", {
-      _user_id: context.userId,
-      _role: "admin",
-    });
-    const { data: isLeader } = await context.supabase.rpc("has_role", {
-      _user_id: context.userId,
-      _role: "leader",
-    });
-    if (!isAdmin && !isLeader) throw new Error("Forbidden");
+    // "leader" não existe mais como papel (virou "lider"/"gerente"/"direcao").
+    const checks = await Promise.all(
+      (["admin", "lider", "leader", "gerente", "direcao"] as const).map((role) =>
+        context.supabase.rpc("has_role", { _user_id: context.userId, _role: role }),
+      ),
+    );
+    if (!checks.some((c: any) => c.data)) throw new Error("Forbidden");
     const { error } = await context.supabase
       .from("weekly_schedules")
       .upsert(

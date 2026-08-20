@@ -484,6 +484,17 @@ export const getEvaluationDashboard = createServerFn({ method: "GET" })
     z.object({ cycle_id: z.string().uuid().optional() }).parse(d),
   )
   .handler(async ({ data, context }) => {
+    // Só liderança acessa o painel — a RLS de "evaluations" (can_access_evaluation)
+    // já restringe as linhas trazidas ao próprio time de quem chama (avaliado,
+    // avaliador designado, ou manager_id/co_leader_id do avaliado), então os
+    // agregados abaixo já saem escopados certos pra líder vs. gerente vs. admin.
+    const roleChecks = await Promise.all(
+      (["admin", "lider", "leader", "gerente", "direcao"] as const).map((role) =>
+        context.supabase.rpc("has_role", { _user_id: context.userId, _role: role }),
+      ),
+    );
+    if (!roleChecks.some((c: any) => c.data)) throw new Error("Forbidden");
+
     // Ciclo alvo (o mais recente aberto/andamento se não informado)
     let cycleId = data.cycle_id;
     if (!cycleId) {

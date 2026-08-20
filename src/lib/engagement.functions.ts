@@ -263,17 +263,18 @@ export const resolveFlaggedKudos = createServerFn({ method: "POST" })
 export const leaderOverview = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data: isAdmin } = await context.supabase.rpc("has_role", {
-      _user_id: context.userId,
-      _role: "admin",
-    });
-    const { data: isLeader } = await context.supabase.rpc("has_role", {
-      _user_id: context.userId,
-      _role: "leader",
-    });
-    if (!isAdmin && !isLeader) throw new Error("Forbidden");
+    // "leader" não existe mais como papel (virou "lider"/"gerente"/"direcao").
+    const checks = await Promise.all(
+      (["admin", "lider", "leader", "gerente", "direcao"] as const).map((role) =>
+        context.supabase.rpc("has_role", { _user_id: context.userId, _role: role }),
+      ),
+    );
+    if (!checks.some((c: any) => c.data)) throw new Error("Forbidden");
     const since = new Date();
     since.setDate(since.getDate() - 7);
+    // RLS (scoped read mood) já limita as linhas ao próprio time do chamador
+    // (manager_id pra líder, atração pra gerente/direção) — não precisa
+    // filtrar de novo aqui.
     const { data: moods } = await context.supabase
       .from("mood_checkins")
       .select("user_id, mood, created_at")

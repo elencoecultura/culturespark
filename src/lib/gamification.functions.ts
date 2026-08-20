@@ -146,10 +146,14 @@ export const getAttractionLeaderboard = createServerFn({ method: "POST" })
     const season = cycle.start ? `Ciclo desde ${cycle.start.slice(0, 10)}` : currentSeason();
     const { data: me } = await context.supabase
       .from("profiles")
-      .select("attraction")
+      .select("attraction, negocio")
       .eq("id", context.userId)
       .maybeSingle();
-    const attraction = data.attraction ?? me?.attraction ?? null;
+    // Só quem enxerga tudo (TODOS) ou admin pode pedir a atração de outra
+    // pessoa — todo mundo mais sempre vê a própria, mesmo que peça outra.
+    const { data: isAdmin } = await context.supabase.rpc("has_role", { _user_id: context.userId, _role: "admin" });
+    const hasTodosScope = me?.attraction === "TODOS" || me?.negocio === "TODOS";
+    const attraction = (isAdmin || hasTodosScope ? data.attraction : null) ?? me?.attraction ?? null;
     if (!attraction) return { attraction: null, season, rows: [] };
 
     const { data: profiles } = await context.supabase
@@ -184,15 +188,13 @@ export const markScheduleCompleted = createServerFn({ method: "POST" })
     z.object({ id: z.string().uuid(), completed: z.boolean() }).parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { data: isAdmin } = await context.supabase.rpc("has_role", {
-      _user_id: context.userId,
-      _role: "admin",
-    });
-    const { data: isLeader } = await context.supabase.rpc("has_role", {
-      _user_id: context.userId,
-      _role: "leader",
-    });
-    if (!isAdmin && !isLeader) throw new Error("Forbidden");
+    // "leader" não existe mais como papel (virou "lider"/"gerente"/"direcao").
+    const checks = await Promise.all(
+      (["admin", "lider", "leader", "gerente", "direcao"] as const).map((role) =>
+        context.supabase.rpc("has_role", { _user_id: context.userId, _role: role }),
+      ),
+    );
+    if (!checks.some((c: any) => c.data)) throw new Error("Forbidden");
     const { error } = await context.supabase
       .from("weekly_schedules")
       .update({ completed_full: data.completed })

@@ -7,25 +7,49 @@ async function assertAdmin(supabase: any, userId: string) {
   if (error) throw new Error(error.message);
   if (!data) throw new Error("Forbidden");
 }
-async function assertLeaderOrAdmin(supabase: any, userId: string) {
-  const { data: a } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
-  if (a) return;
-  const { data: l } = await supabase.rpc("has_role", { _user_id: userId, _role: "leader" });
-  if (!l) throw new Error("Forbidden");
+
+// "leader" não existe mais como papel (virou "lider") — checagem antiga
+// nunca batia com conta real nenhuma. Aceita qualquer papel de liderança.
+const LEADERSHIP_ROLES = ["admin", "lider", "leader", "gerente", "direcao"] as const;
+async function myLeadershipTier(supabase: any, userId: string) {
+  const checks = await Promise.all(
+    LEADERSHIP_ROLES.map((role) => supabase.rpc("has_role", { _user_id: userId, _role: role })),
+  );
+  const [isAdmin, isLider, , isGerente, isDirecao] = checks.map((c: any) => c.data);
+  if (!checks.some((c: any) => c.data)) throw new Error("Forbidden");
+  return { isAdmin, isLeaderTier: isLider, isGerente, isDirecao };
 }
 
+// Time de gente (Elenco) — escopado igual ao painel de check-ins:
+// líder só vê quem tem manager_id apontando pra ele, gerente/direção veem
+// a atração/negócio inteiro, admin e attraction/negocio="TODOS" veem tudo.
 export const listUsers = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    await assertLeaderOrAdmin(context.supabase, context.userId);
+    const tier = await myLeadershipTier(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: profiles, error } = await supabaseAdmin
+
+    const { data: myProfile } = await supabaseAdmin
       .from("profiles")
-      .select("*")
-      .order("full_name");
+      .select("attraction, negocio")
+      .eq("id", context.userId)
+      .maybeSingle();
+    const hasTodosScope = myProfile?.attraction === "TODOS" || myProfile?.negocio === "TODOS";
+    const seesAll = tier.isAdmin || hasTodosScope;
+    const seesWholeAttraction = seesAll || tier.isGerente || tier.isDirecao;
+
+    let q = supabaseAdmin.from("profiles").select("*").order("full_name");
+    if (!seesAll) {
+      q = seesWholeAttraction ? q.eq("attraction", myProfile?.attraction ?? "__none__") : q.eq("manager_id", context.userId);
+    }
+    const { data: profiles, error } = await q;
     if (error) throw new Error(error.message);
-    const { data: roles } = await supabaseAdmin.from("user_roles").select("user_id, role");
-    const { data: usersList } = await supabaseAdmin.auth.admin.listUsers({ perPage: 200 });
+
+    const ids = (profiles ?? []).map((p) => p.id);
+    const { data: roles } = ids.length
+      ? await supabaseAdmin.from("user_roles").select("user_id, role").in("user_id", ids)
+      : { data: [] as { user_id: string; role: string }[] };
+    const { data: usersList } = await supabaseAdmin.auth.admin.listUsers({ perPage: 500 });
     const emailById = new Map(usersList.users.map((u) => [u.id, u.email ?? ""]));
     return (profiles ?? []).map((p) => ({
       ...p,
@@ -42,7 +66,7 @@ export const createUser = createServerFn({ method: "POST" })
         email: z.string().email(),
         password: z.string().min(6),
         full_name: z.string().min(1),
-        role: z.enum(["admin", "leader", "messenger"]),
+        role: z.enum(["admin", "direcao", "gerente", "lider", "elenco"]),
         attraction: z.string().optional(),
         weekly_hours: z.number().int().min(0).max(80).optional(),
         days_off: z.array(z.string()).optional(),
@@ -84,7 +108,7 @@ export const updateUser = createServerFn({ method: "POST" })
         weekly_hours: z.number().int().min(0).max(80).optional(),
         days_off: z.array(z.string()).optional(),
         active: z.boolean().optional(),
-        role: z.enum(["admin", "leader", "messenger"]).optional(),
+        role: z.enum(["admin", "direcao", "gerente", "lider", "elenco"]).optional(),
       })
       .parse(d),
   )
