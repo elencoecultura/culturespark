@@ -151,6 +151,22 @@ export const listMyMoods = createServerFn({ method: "GET" })
     return data ?? [];
   });
 
+// Lista leve de colegas (só id + nome), acessível pra qualquer pessoa logada —
+// usada no seletor "pra quem" do Elogio Rápido. listUsers (admin.functions.ts)
+// exige líder/admin e devolve dado sensível demais pra esse uso.
+export const listColleagues = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await supabaseAdmin
+      .from("profiles")
+      .select("id, full_name")
+      .eq("active", true)
+      .order("full_name");
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
 export const sendKudos = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>

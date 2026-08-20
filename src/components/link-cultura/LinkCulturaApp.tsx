@@ -42,7 +42,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { confirmAction } from "@/lib/confirm";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { submitMood, listMyMoods, sendKudos, listKudos, leaderOverview } from "@/lib/engagement.functions";
+import { submitMood, listMyMoods, sendKudos, listKudos, listColleagues, leaderOverview } from "@/lib/engagement.functions";
 import { listWeekBirthdays } from "@/lib/birthdays.functions";
 import { getDiscStatus } from "@/lib/disc.functions";
 import Bussola, { BussolaAdmin } from "./Bussola";
@@ -568,8 +568,8 @@ function FeedbackScreen({ canSend }: { canSend: boolean }) {
   const [msg, setMsg] = useState("");
   const qc = useQueryClient();
 
-  const usersFn = useServerFn(listUsers);
-  const { data: people } = useQuery({ queryKey: ["users"], queryFn: () => usersFn() });
+  const colleaguesFn = useServerFn(listColleagues);
+  const { data: people } = useQuery({ queryKey: ["colleagues"], queryFn: () => colleaguesFn() });
   const kudosFn = useServerFn(listKudos);
   const { data: kudos } = useQuery({ queryKey: ["kudos"], queryFn: () => kudosFn() });
 
@@ -614,7 +614,7 @@ function FeedbackScreen({ canSend }: { canSend: boolean }) {
               <option value="" className="text-blu">Escolha alguém</option>
               {(people ?? []).map((p) => (
                 <option key={p.id} value={p.id} className="text-blu">
-                  {p.full_name || p.email}
+                  {p.full_name || "Sem nome"}
                 </option>
               ))}
             </select>
@@ -1891,7 +1891,7 @@ export default function LinkCulturaApp() {
   const screen = useMemo(() => {
     if (isLoading) return <div className="grid place-items-center py-20"><Loader2 className="animate-spin text-white/60" /></div>;
     switch (tab) {
-      case "feedback": return <FeedbackScreen canSend={isLeader} />;
+      case "feedback": return <FeedbackScreen canSend />;
       case "team": return <TeamScreen isAdmin={isAdmin} />;
       case "leader": return <LeaderScreen isAdmin={isAdmin} />;
       case "points": return <GamificationScreen myUserId={profile?.id ?? ""} />;
