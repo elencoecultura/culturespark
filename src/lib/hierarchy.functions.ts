@@ -7,6 +7,32 @@ async function requireAdmin(supabase: any, userId: string) {
   if (!data) throw new Error("Apenas admin pode alterar a hierarquia.");
 }
 
+// Garante que quem vai virar manager_id/co_leader_id de alguém de fato tem
+// papel de liderança — evita que um manager_id aponte pra uma conta elenco
+// e essa conta ganhe acesso de líder por tabela via can_view_user_data/
+// can_access_evaluation (RLS), sem nunca ter recebido o papel.
+async function assertLeadershipRole(supabase: any, ids: (string | null | undefined)[]) {
+  const uniqueIds = Array.from(new Set(ids.filter((id): id is string => !!id)));
+  if (!uniqueIds.length) return;
+  const { data: roleRows } = await supabase
+    .from("user_roles")
+    .select("user_id, role")
+    .in("user_id", uniqueIds);
+  const leadershipRoles = new Set(["lider", "leader", "gerente", "direcao", "admin"]);
+  const rolesById = new Map<string, string[]>();
+  (roleRows ?? []).forEach((r: any) => {
+    const arr = rolesById.get(r.user_id) ?? [];
+    arr.push(r.role);
+    rolesById.set(r.user_id, arr);
+  });
+  for (const id of uniqueIds) {
+    const roles = rolesById.get(id) ?? [];
+    if (!roles.some((r) => leadershipRoles.has(r))) {
+      throw new Error("A pessoa escolhida como líder/co-líder não tem papel de liderança.");
+    }
+  }
+}
+
 // Lista todo o elenco/liderança com o líder e co-líder atuais.
 // Retorna também nomes dos líderes já resolvidos para exibir sem N+1 no cliente.
 export const listCastWithHierarchy = createServerFn({ method: "GET" })
@@ -80,6 +106,7 @@ export const updateProfileHierarchy = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await requireAdmin(context.supabase, context.userId);
+    await assertLeadershipRole(context.supabase, [data.manager_id, data.co_leader_id]);
     const patch: {
       manager_id?: string | null;
       co_leader_id?: string | null;
@@ -110,6 +137,7 @@ export const bulkAssignLeader = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await requireAdmin(context.supabase, context.userId);
+    await assertLeadershipRole(context.supabase, [data.manager_id, data.co_leader_id]);
     const patch: { manager_id?: string | null; co_leader_id?: string | null } = {};
     if (data.manager_id !== undefined) patch.manager_id = data.manager_id;
     if (data.co_leader_id !== undefined) patch.co_leader_id = data.co_leader_id;

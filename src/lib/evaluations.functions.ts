@@ -7,6 +7,15 @@ async function isAdmin(supabase: any, userId: string) {
   return !!data;
 }
 
+async function isLeadership(supabase: any, userId: string) {
+  const roleChecks = await Promise.all(
+    (["admin", "lider", "leader", "gerente", "direcao"] as const).map((role) =>
+      supabase.rpc("has_role", { _user_id: userId, _role: role }),
+    ),
+  );
+  return roleChecks.some((c: any) => c.data);
+}
+
 // -------- Metadata --------
 
 export const listPillarsAndCompetencies = createServerFn({ method: "GET" })
@@ -129,11 +138,12 @@ export const createTestEvaluation = createServerFn({ method: "POST" })
       .eq("evaluator_id", context.userId)
       .maybeSingle();
     if (!ev) {
-      await context.supabase.from("evaluation_evaluators").insert({
+      const { error: evalErr } = await context.supabase.from("evaluation_evaluators").insert({
         evaluation_id: evalId!,
         evaluator_id: context.userId,
-        role: "leader",
+        role: "lider",
       });
+      if (evalErr) throw new Error(evalErr.message);
     }
 
     return { id: evalId!, cycle_id: cycleId! };
@@ -144,6 +154,9 @@ export const listEvaluableMembers = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const admin = await isAdmin(context.supabase, context.userId);
+    if (!admin && !(await isLeadership(context.supabase, context.userId))) {
+      throw new Error("Forbidden");
+    }
     let q = context.supabase
       .from("profiles")
       .select("id, full_name, attraction, negocio")
@@ -165,6 +178,9 @@ export const createEvaluationForMember = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const admin = await isAdmin(context.supabase, context.userId);
+    if (!admin && !(await isLeadership(context.supabase, context.userId))) {
+      throw new Error("Forbidden");
+    }
 
     // Se não é admin, valida que o alvo é liderado direto ou co-liderado
     if (!admin) {
@@ -181,6 +197,12 @@ export const createEvaluationForMember = createServerFn({ method: "POST" })
       }
     }
 
+    // A partir daqui a autorização já foi validada acima (admin, ou líder/co-líder
+    // direto do avaliado) — usamos supabaseAdmin pros writes porque a RLS de
+    // "evaluations"/"evaluation_evaluators" só libera INSERT pra admin, e não
+    // queremos que a checagem de autorização dependa de duas camadas divergentes.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
     // Reaproveita se já existir
     const { data: existing } = await context.supabase
       .from("evaluations")
@@ -191,7 +213,7 @@ export const createEvaluationForMember = createServerFn({ method: "POST" })
 
     let evalId = existing?.id as string | undefined;
     if (!evalId) {
-      const { data: ins, error } = await context.supabase
+      const { data: ins, error } = await supabaseAdmin
         .from("evaluations")
         .insert({
           cycle_id: data.cycle_id,
@@ -212,11 +234,12 @@ export const createEvaluationForMember = createServerFn({ method: "POST" })
       .eq("evaluator_id", context.userId)
       .maybeSingle();
     if (!ev) {
-      await context.supabase.from("evaluation_evaluators").insert({
+      const { error: evalErr } = await supabaseAdmin.from("evaluation_evaluators").insert({
         evaluation_id: evalId!,
         evaluator_id: context.userId,
-        role: "leader",
+        role: "lider",
       });
+      if (evalErr) throw new Error(evalErr.message);
     }
 
     return { id: evalId! };

@@ -2,26 +2,41 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-// Moderação leve do Elogio Rápido: não bloqueia o envio, só sinaliza pra
-// revisão de gestão/RH quando a mensagem tem termo sensível. Lista curta
-// de propósito — é um ponto de partida, fácil de estender depois.
-const SENSITIVE_TERMS = [
+// Moderação do Elogio Rápido: bloqueia o envio na hora (não deixa nem
+// registrar) quando a mensagem tem ofensa, discriminação, ameaça ou
+// conteúdo de segunda intenção/não-corporativo.
+const BLOCKED_TERMS = [
+  // ofensas, discriminação, ameaças
   "idiota", "imbecil", "burro", "burra", "estúpido", "estúpida", "otário", "otária",
   "vagabundo", "vagabunda", "vadia", "safada", "safado",
-  "gostosa", "gostoso", "delícia", "peguete",
   "assédio", "assediar",
   "racista", "racismo", "macaco", "macaca",
   "viado", "bicha", "sapatão",
   "ameaça", "ameaçar", "matar", "morrer",
   "gorda", "gordo", "baleia", "aleijado", "aleijada", "retardado", "retardada",
+  // segunda intenção / conteúdo não-corporativo
+  "gostosa", "gostoso", "gostosão", "gostosona", "gostosinho", "gostosinha",
+  "delícia", "delicioso", "deliciosa", "peguete",
+  "lindo", "linda", "fofo", "fofa", "fofinho", "fofinha",
+  "gato", "gata", "gatinho", "gatinha",
+  "benzinho", "xuxu", "docinho", "gracinha",
+  "cheiroso", "cheirosa", "sexy", "sensual", "tesão", "tesudo", "tesuda",
+  "sarado", "sarada", "corpão", "beldade", "princesa",
+  "meu amor", "paixão", "apaixonado", "apaixonada", "apaixonei",
+  "flerte", "flertar", "crush", "cantada", "dar em cima",
+  "namorar", "namorado", "namorada", "ficante",
 ];
 
 const stripAccents = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 
-function flagMessage(text: string): string | null {
+function findBlockedTerm(text: string): string | null {
   const normalized = stripAccents(text).toLowerCase();
-  const hits = SENSITIVE_TERMS.filter((term) => normalized.includes(stripAccents(term).toLowerCase()));
-  return hits.length ? hits.join(", ") : null;
+  for (const term of BLOCKED_TERMS) {
+    const normTerm = stripAccents(term).toLowerCase();
+    const pattern = new RegExp(`(^|[^a-z0-9à-ú])${normTerm}([^a-z0-9à-ú]|$)`, "i");
+    if (pattern.test(normalized)) return term;
+  }
+  return null;
 }
 
 async function assertAdmin(supabase: any, userId: string) {
@@ -182,14 +197,16 @@ export const sendKudos = createServerFn({ method: "POST" })
     if (data.to_user === context.userId) {
       throw new Error("Você não pode mandar um elogio pra você mesmo.");
     }
-    const flagReason = flagMessage(data.message);
+    if (findBlockedTerm(data.message)) {
+      throw new Error("Essa mensagem não é apropriada pro ambiente corporativo — revise o texto e tente de novo.");
+    }
     const { error } = await context.supabase.from("kudos").insert({
       from_user: context.userId,
       to_user: data.to_user,
       message: data.message,
       category: data.category ?? null,
-      flagged: !!flagReason,
-      flag_reason: flagReason,
+      flagged: false,
+      flag_reason: null,
     });
     if (error) throw new Error(error.message);
 

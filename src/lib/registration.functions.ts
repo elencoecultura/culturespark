@@ -9,23 +9,32 @@ const schema = z.object({
 
 export type RegistrationInput = z.infer<typeof schema>;
 
+// Precisa espelhar exatamente public.normalize_name() (SQL) — que tira acento
+// via translate() antes do lower(trim(...)). Comparar só com .toLowerCase()
+// (sem tirar acento) faz nomes com ã/ô/á/etc. nunca baterem com o
+// name_normalized já salvo no banco, mesmo com o pré-cadastro existindo.
+const normalizeName = (s: string) =>
+  s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim().replace(/\s+/g, " ");
+
 export const registerHero = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => schema.parse(d))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const normalizedFullName = normalizeName(data.full_name);
 
     // Pre-check: must exist in pre_registrations and not be claimed.
     // Reads the table directly (admin client) — the public RPC intentionally hides PII now.
     const { data: preRows, error: lErr } = await supabaseAdmin
       .from("pre_registrations")
       .select("id, full_name, email, cargo, setor, perfil, negocio, name_normalized, claimed_by")
-      .or(`email.ilike.${data.email},name_normalized.eq.${data.full_name.toLowerCase()}`)
+      .or(`email.ilike.${data.email},name_normalized.eq.${normalizedFullName}`)
       .limit(5);
     if (lErr) throw new Error(lErr.message);
     const pre = (preRows ?? []).find(
       (r: any) =>
         (r.email && r.email.toLowerCase() === data.email.toLowerCase()) ||
-        r.name_normalized === data.full_name.toLowerCase(),
+        r.name_normalized === normalizedFullName,
     ) as any;
     if (!pre) {
       throw new Error(
