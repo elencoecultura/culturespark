@@ -277,6 +277,74 @@ export const resolveFlaggedKudos = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// Admin/RH: ver TODOS os elogios (não só os sinalizados por palavra) — bullying
+// e assédio quase nunca usam os termos bloqueados, então revisão de conteúdo
+// livre é a única forma real de pegar isso.
+export const listAllKudos = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z
+      .object({
+        search: z.string().trim().max(120).optional(),
+        limit: z.number().int().min(1).max(500).default(200),
+      })
+      .parse(d ?? {}),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Busca (quando houver) bate tanto no texto da mensagem quanto no nome de
+    // quem manda/recebe — por isso filtra em memória depois de resolver os
+    // nomes, em vez de filtrar já na query (não dá pra fazer ILIKE em nome
+    // de outra tabela numa query só).
+    const fetchLimit = data.search ? 500 : data.limit;
+    const { data: rows, error } = await supabaseAdmin
+      .from("kudos")
+      .select("id, from_user, to_user, message, category, flagged, flag_reason, created_at")
+      .order("created_at", { ascending: false })
+      .limit(fetchLimit);
+    if (error) throw new Error(error.message);
+
+    const ids = Array.from(new Set((rows ?? []).flatMap((r) => [r.from_user, r.to_user])));
+    const { data: profs } = ids.length
+      ? await supabaseAdmin.from("profiles").select("id, full_name").in("id", ids)
+      : { data: [] as Array<{ id: string; full_name: string }> };
+    const nameById = new Map((profs ?? []).map((p) => [p.id, p.full_name]));
+
+    let result = (rows ?? []).map((r) => ({
+      ...r,
+      from_name: nameById.get(r.from_user) ?? "Alguém",
+      to_name: nameById.get(r.to_user) ?? "Alguém",
+    }));
+
+    if (data.search) {
+      const term = data.search.toLowerCase();
+      result = result
+        .filter(
+          (r) =>
+            r.message.toLowerCase().includes(term) ||
+            r.from_name.toLowerCase().includes(term) ||
+            r.to_name.toLowerCase().includes(term),
+        )
+        .slice(0, data.limit);
+    }
+
+    return result;
+  });
+
+// Admin/RH: remove um elogio identificado como abusivo/bullying na revisão manual.
+export const deleteKudos = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("kudos").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const leaderOverview = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {

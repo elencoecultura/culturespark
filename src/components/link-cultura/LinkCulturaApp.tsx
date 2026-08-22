@@ -48,8 +48,9 @@ import { getDiscStatus } from "@/lib/disc.functions";
 import Bussola, { BussolaAdmin } from "./Bussola";
 import WellbeingAdmin from "./WellbeingAdmin";
 import FlaggedKudosAdmin from "./FlaggedKudosAdmin";
+import KudosAuditAdmin from "./KudosAuditAdmin";
 import { SUPREME_EMAILS } from "@/lib/wellbeing.functions";
-import { HeartCrack, Flag } from "lucide-react";
+import { HeartCrack, Flag, ShieldAlert } from "lucide-react";
 import { listUsers, createUser, updateUser } from "@/lib/admin.functions";
 import { ATTRACTIONS } from "@/lib/schedule.functions";
 import {
@@ -1738,7 +1739,7 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
 
 /* ---------- Shell ---------- */
 
-type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "culture-overview" | "install-guide" | "accounts-admin";
+type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "kudos-audit" | "culture-overview" | "install-guide" | "accounts-admin";
 
 function BottomNav({
   active,
@@ -1859,6 +1860,7 @@ export default function LinkCulturaApp() {
         { id: "accounts-admin", label: "Contas cadastradas", icon: KeyRound, desc: "Trocar email, senha ou gerar link de acesso" },
         { id: "broadcast", label: "Enviar recado", icon: Send, desc: "Notificar todo o elenco" },
         { id: "flagged-kudos", label: "Elogios sinalizados", icon: Flag, desc: "Revisar mensagens marcadas pela moderação" },
+        { id: "kudos-audit", label: "Revisar elogios", icon: ShieldAlert, desc: "Ver todos os elogios — investigar bullying/assédio" },
         { id: "disc-admin", label: "Bússola do time", icon: Compass, desc: "Perfis comportamentais (quem consentiu)" },
         { id: "hierarquia", label: "Elenco & Hierarquia", icon: Users, desc: "Definir líder e co-líder de cada pessoa" },
         { id: "pre-reg", label: "Pré-cadastro", icon: UserPlus, desc: "Importar planilha do elenco" },
@@ -1903,6 +1905,7 @@ export default function LinkCulturaApp() {
       case "disc-admin": return <BussolaAdmin />;
       case "wellbeing": return <WellbeingAdmin />;
       case "flagged-kudos": return <FlaggedKudosAdmin />;
+      case "kudos-audit": return <KudosAuditAdmin />;
       case "culture-overview": return <CultureOverview />;
       case "accounts-admin": return <AccountsAdmin />;
       case "install-guide": return <InstallGuide />;
