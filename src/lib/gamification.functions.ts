@@ -11,7 +11,7 @@ export const POINT_RULES = [
 ] as const;
 
 export const BADGES = [
-  { key: "streak_7", label: "Semana firme", desc: "7 check-ins seguidos", group: "streak", goal: 7 },
+  { key: "streak_7", label: "Semana firme", desc: "6 check-ins na semana (escala 6x1)", group: "streak", goal: 6 },
   { key: "streak_30", label: "Mês inteiro", desc: "30 check-ins seguidos", group: "streak", goal: 30 },
   { key: "streak_100", label: "Lenda diária", desc: "100 check-ins seguidos", group: "streak", goal: 100 },
   { key: "always_present_1", label: "Presença ouro", desc: "1 semana 100% cumprida", group: "present", goal: 1 },
@@ -91,7 +91,11 @@ export const getMyGamification = createServerFn({ method: "GET" })
     const totalXp = (allPoints.data ?? []).reduce((s, r) => s + (r.points as number), 0);
     const seasonXp = (seasonPoints.data ?? []).reduce((s, r) => s + (r.points as number), 0);
 
-    // Check-in streak (consecutive days up to today, America/Sao_Paulo)
+    // Check-in streak (dias com check-in, America/Sao_Paulo). Escala é 6x1
+    // (1 folga por semana) — um único dia isolado sem check-in é tratado
+    // como folga e não quebra a sequência (só não soma naquele dia). Dois
+    // dias seguidos sem check-in aí sim quebra, porque não é compatível
+    // com folga de 1 dia só.
     const { data: moods } = await context.supabase
       .from("mood_checkins")
       .select("created_at")
@@ -103,16 +107,23 @@ export const getMyGamification = createServerFn({ method: "GET" })
     const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
     const days = new Set((moods ?? []).map((m) => fmt.format(new Date(m.created_at as string))));
     let streak = 0;
+    let consecutiveMisses = 0;
     const today = new Date();
     for (let i = 0; i < 365; i++) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
       const key = fmt.format(d);
-      if (days.has(key)) streak++;
-      else if (i === 0) {
+      if (days.has(key)) {
+        streak++;
+        consecutiveMisses = 0;
+      } else if (i === 0) {
         // allow streak to count from yesterday if no check-in today yet
         continue;
-      } else break;
+      } else {
+        consecutiveMisses++;
+        if (consecutiveMisses > 1) break;
+        // 1 dia isolado sem check-in = folga da escala 6x1, não quebra a sequência
+      }
     }
 
     const { data: weeksFullRows } = await context.supabase
