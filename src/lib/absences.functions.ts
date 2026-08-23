@@ -146,7 +146,7 @@ export const listTodayCheckins = createServerFn({ method: "POST" })
     // Gerente/direção enxergam a atração inteira (todos os times dela).
     // Líder enxerga só o próprio time — várias lideranças podem dividir a
     // mesma atração (ex.: 3 líderes de salão na mesma pizzaria), então
-    // escopo de líder é sempre por manager_id, nunca por atração.
+    // escopo de líder é sempre por manager_id/co_leader_id, nunca por atração.
     const seesWholeAttraction = seesAll || isGerente || isDirecao;
 
     let q = supabaseAdmin
@@ -158,7 +158,7 @@ export const listTodayCheckins = createServerFn({ method: "POST" })
     } else if (seesWholeAttraction) {
       q = q.eq("attraction", myProfile?.attraction ?? "__none__");
     } else {
-      q = q.eq("manager_id", context.userId);
+      q = q.or(`manager_id.eq.${context.userId},co_leader_id.eq.${context.userId}`);
     }
     const { data: people, error } = await q;
     if (error) throw new Error(error.message);

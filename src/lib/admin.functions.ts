@@ -21,8 +21,9 @@ async function myLeadershipTier(supabase: any, userId: string) {
 }
 
 // Time de gente (Elenco) — escopado igual ao painel de check-ins:
-// líder só vê quem tem manager_id apontando pra ele, gerente/direção veem
-// a atração/negócio inteiro, admin e attraction/negocio="TODOS" veem tudo.
+// líder só vê quem tem manager_id OU co_leader_id apontando pra ele, gerente/
+// direção veem a atração/negócio inteiro, admin e attraction/negocio="TODOS"
+// veem tudo.
 export const listUsers = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -40,7 +41,9 @@ export const listUsers = createServerFn({ method: "GET" })
 
     let q = supabaseAdmin.from("profiles").select("*").order("full_name");
     if (!seesAll) {
-      q = seesWholeAttraction ? q.eq("attraction", myProfile?.attraction ?? "__none__") : q.eq("manager_id", context.userId);
+      q = seesWholeAttraction
+        ? q.eq("attraction", myProfile?.attraction ?? "__none__")
+        : q.or(`manager_id.eq.${context.userId},co_leader_id.eq.${context.userId}`);
     }
     const { data: profiles, error } = await q;
     if (error) throw new Error(error.message);
