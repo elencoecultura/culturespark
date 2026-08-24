@@ -83,7 +83,7 @@ export const getMyGamification = createServerFn({ method: "GET" })
       context.supabase.from("badges_awarded").select("badge_key, awarded_at").eq("user_id", context.userId),
       context.supabase
         .from("profiles")
-        .select("attraction, full_name")
+        .select("attraction, full_name, negocio")
         .eq("id", context.userId)
         .maybeSingle(),
     ]);
@@ -91,11 +91,14 @@ export const getMyGamification = createServerFn({ method: "GET" })
     const totalXp = (allPoints.data ?? []).reduce((s, r) => s + (r.points as number), 0);
     const seasonXp = (seasonPoints.data ?? []).reduce((s, r) => s + (r.points as number), 0);
 
-    // Check-in streak (dias com check-in, America/Sao_Paulo). Escala é 6x1
-    // (1 folga por semana) — um único dia isolado sem check-in é tratado
-    // como folga e não quebra a sequência (só não soma naquele dia). Dois
-    // dias seguidos sem check-in aí sim quebra, porque não é compatível
-    // com folga de 1 dia só.
+    // Check-in streak (dias com check-in, America/Sao_Paulo). A maioria da
+    // casa é 6x1 (1 folga por semana), mas a Hector Studios (segunda a
+    // sexta) é 5x2 (2 folgas). Um número de dias isolados sem check-in
+    // igual à folga da escala não quebra a sequência (só não soma naqueles
+    // dias) — passar disso aí sim quebra.
+    const isHectorStudios = (myProfile.data?.negocio ?? "").toUpperCase() === "HECTOR STUDIOS";
+    const graceMisses = isHectorStudios ? 2 : 1;
+
     const { data: moods } = await context.supabase
       .from("mood_checkins")
       .select("created_at")
@@ -121,8 +124,8 @@ export const getMyGamification = createServerFn({ method: "GET" })
         continue;
       } else {
         consecutiveMisses++;
-        if (consecutiveMisses > 1) break;
-        // 1 dia isolado sem check-in = folga da escala 6x1, não quebra a sequência
+        if (consecutiveMisses > graceMisses) break;
+        // dias de folga da escala (6x1 ou 5x2) não quebram a sequência
       }
     }
 
