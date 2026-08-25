@@ -200,6 +200,24 @@ export const sendKudos = createServerFn({ method: "POST" })
     if (findBlockedTerm(data.message)) {
       throw new Error("Essa mensagem não é apropriada pro ambiente corporativo — revise o texto e tente de novo.");
     }
+
+    // Máximo 2 elogios enviados por dia (fuso America/Sao_Paulo) — evita
+    // gente mandando vários só pra pontuar no ranking.
+    const KUDOS_PER_DAY_LIMIT = 2;
+    const { data: recentSent } = await context.supabase
+      .from("kudos")
+      .select("created_at")
+      .eq("from_user", context.userId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    const tz = "America/Sao_Paulo";
+    const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+    const todayKey = fmt.format(new Date());
+    const sentToday = (recentSent ?? []).filter((r) => fmt.format(new Date(r.created_at as string)) === todayKey).length;
+    if (sentToday >= KUDOS_PER_DAY_LIMIT) {
+      throw new Error(`Você já mandou ${KUDOS_PER_DAY_LIMIT} elogios hoje — volta amanhã pra mandar mais.`);
+    }
+
     const { error } = await context.supabase.from("kudos").insert({
       from_user: context.userId,
       to_user: data.to_user,
