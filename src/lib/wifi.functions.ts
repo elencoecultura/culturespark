@@ -54,25 +54,21 @@ function matchesEntry(clientIp: string, entry: string): boolean {
  * from the current network. Marks first_login_at on the very first successful access.
  *
  * Rules:
- *  - admin/liderança (leader, lider, gerente, direcao): always allowed
+ *  - admin: sempre passa (precisa poder mexer no app de qualquer lugar)
+ *  - liderança comum (líder/gerente/direção) NÃO tem bypass automático —
+ *    só quem foi explicitamente liberado no painel (wifi_bypass) escapa da
+ *    trava de rede, mesmo sendo líder.
  *  - first access (first_login_at is null): allowed AND timestamped
  *  - subsequent access: allowed only if client IP is in wifi_allowlist
  *  - empty allowlist: allowed (lock not configured yet — graceful default)
  */
-const WIFI_BYPASS_ROLES = ["admin", "leader", "lider", "gerente", "direcao"] as const;
-
 export const enforceWifiLock = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const ip = clientIp();
     const { supabase, userId } = context;
 
-    // admin + liderança sempre passam (precisam poder acessar de qualquer lugar,
-    // não só da rede da casa) — checa todos os papéis de bypass em paralelo.
-    const roleChecks = await Promise.all(
-      WIFI_BYPASS_ROLES.map((role) => supabase.rpc("has_role", { _user_id: userId, _role: role })),
-    );
-    const hasLeadershipBypass = roleChecks.some((r) => r.data);
+    const { data: isAdmin } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
 
     // profile flag + per-user bypass (sensitive columns: read with admin client)
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -91,8 +87,8 @@ export const enforceWifiLock = createServerFn({ method: "POST" })
         .eq("id", userId);
     }
 
-    if (hasLeadershipBypass) {
-      return { allowed: true as const, reason: "leadership", ip, firstAccess };
+    if (isAdmin) {
+      return { allowed: true as const, reason: "admin", ip, firstAccess };
     }
     if (prof?.wifi_bypass) {
       return { allowed: true as const, reason: "bypass", ip, firstAccess };
