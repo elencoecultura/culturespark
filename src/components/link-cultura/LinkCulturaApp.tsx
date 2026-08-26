@@ -50,6 +50,7 @@ import WellbeingAdmin from "./WellbeingAdmin";
 import FlaggedKudosAdmin from "./FlaggedKudosAdmin";
 import KudosAuditAdmin from "./KudosAuditAdmin";
 import IluminariAdmin from "./IluminariAdmin";
+import CheckinsDashboard from "./CheckinsDashboard";
 import { SUPREME_EMAILS } from "@/lib/wellbeing.functions";
 import { HeartCrack, Flag, ShieldAlert } from "lucide-react";
 import { listUsers, createUser, updateUser } from "@/lib/admin.functions";
@@ -1740,7 +1741,7 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
 
 /* ---------- Shell ---------- */
 
-type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "kudos-audit" | "iluminari-admin" | "culture-overview" | "install-guide" | "accounts-admin";
+type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "kudos-audit" | "iluminari-admin" | "checkins-dashboard" | "culture-overview" | "install-guide" | "accounts-admin";
 
 function BottomNav({
   active,
@@ -1828,8 +1829,11 @@ export default function LinkCulturaApp() {
     } else {
       t.push({ id: "points", label: "Pontos", icon: Trophy });
     }
+    if (isAdmin) {
+      t.push({ id: "culture-overview", label: "Indicadores", icon: Gauge });
+    }
     return t;
-  }, [isLeader]);
+  }, [isLeader, isAdmin]);
 
   const moreGroups = useMemo(() => {
     const groups: { title: string; items: { id: TabId; label: string; icon: LucideIcon; desc: string }[] }[] = [];
@@ -1863,6 +1867,7 @@ export default function LinkCulturaApp() {
         { id: "flagged-kudos", label: "Elogios sinalizados", icon: Flag, desc: "Revisar mensagens marcadas pela moderação" },
         { id: "kudos-audit", label: "Revisar elogios", icon: ShieldAlert, desc: "Ver todos os elogios — investigar bullying/assédio" },
         { id: "iluminari-admin", label: "Momentos Iluminari", icon: Sun, desc: "Ver todos os momentos compartilhados" },
+        { id: "checkins-dashboard", label: "Check-ins por casa", icon: Gauge, desc: "Quantos check-ins por dia, casa a casa" },
         { id: "disc-admin", label: "Bússola do time", icon: Compass, desc: "Perfis comportamentais (quem consentiu)" },
         { id: "hierarquia", label: "Elenco & Hierarquia", icon: Users, desc: "Definir líder e co-líder de cada pessoa" },
         { id: "pre-reg", label: "Pré-cadastro", icon: UserPlus, desc: "Importar planilha do elenco" },
@@ -1909,6 +1914,7 @@ export default function LinkCulturaApp() {
       case "flagged-kudos": return <FlaggedKudosAdmin />;
       case "kudos-audit": return <KudosAuditAdmin />;
       case "iluminari-admin": return <IluminariAdmin />;
+      case "checkins-dashboard": return <CheckinsDashboard />;
       case "culture-overview": return <CultureOverview />;
       case "accounts-admin": return <AccountsAdmin />;
       case "install-guide": return <InstallGuide />;
