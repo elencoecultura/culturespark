@@ -1830,7 +1830,7 @@ export default function LinkCulturaApp() {
       t.push({ id: "points", label: "Pontos", icon: Trophy });
     }
     if (isAdmin) {
-      t.push({ id: "culture-overview", label: "Indicadores", icon: Gauge });
+      t.push({ id: "checkins-dashboard", label: "Indicadores", icon: Gauge });
     }
     return t;
   }, [isLeader, isAdmin]);
