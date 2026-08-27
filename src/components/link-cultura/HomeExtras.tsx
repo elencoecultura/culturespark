@@ -1,6 +1,6 @@
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Bell, Star, X } from "lucide-react";
 import { getActiveNpsSurvey, submitNpsResponse } from "@/lib/nps.functions";
@@ -25,21 +25,12 @@ export function NpsBanner() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  useEffect(() => {
-    const h = () => {
-      setDismissed(false);
-      setOpen(true);
-    };
-    window.addEventListener("open-nps-banner", h);
-    return () => window.removeEventListener("open-nps-banner", h);
-  }, []);
-
   if (!q.data?.survey || dismissed) return null;
   const s = q.data.survey;
   const alreadyAnswered = q.data.answered;
 
   return (
-    <div id="nps-banner" className="mt-4 glass-soft rounded-[28px] p-3.5 text-white">
+    <div className="mt-4 glass-soft rounded-[28px] p-3.5 text-white">
       <div className="flex items-center gap-3">
         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-pink/25 text-pink">
           <Star size={16} />
@@ -119,27 +110,12 @@ export function HomeNotifications({ onSeeAll }: { onSeeAll?: () => void }) {
         )}
       </div>
       <ul className="space-y-1.5">
-        {unread.map((n: any) => {
-          const isNps = /pesquisa|nps|opini[aã]o/i.test(n.title ?? "");
-          return (
-            <li
-              key={n.id}
-              onClick={
-                isNps
-                  ? () => {
-                      window.dispatchEvent(new CustomEvent("open-nps-banner"));
-                      document.getElementById("nps-banner")?.scrollIntoView({ behavior: "smooth", block: "center" });
-                    }
-                  : undefined
-              }
-              className={`glass-chip rounded-2xl px-3 py-2 ${isNps ? "cursor-pointer transition hover:bg-white/15" : ""}`}
-            >
-              <div className="text-[13px] font-semibold">{n.title}</div>
-              <div className="text-[11.5px] text-white/70 line-clamp-2">{n.body}</div>
-              {isNps && <div className="mt-1 text-[11px] font-semibold text-celeste">Toque pra responder →</div>}
-            </li>
-          );
-        })}
+        {unread.map((n: any) => (
+          <li key={n.id} className="glass-chip rounded-2xl px-3 py-2">
+            <div className="text-[13px] font-semibold">{n.title}</div>
+            <div className="text-[11.5px] text-white/70 line-clamp-2">{n.body}</div>
+          </li>
+        ))}
       </ul>
     </div>
   );

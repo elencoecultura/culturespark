@@ -506,6 +506,9 @@ function HomeScreen({ name, go, isAdmin, isLeader }: { name: string; go: (id: Ta
         <EnergyCheckin name={name} streak={streak} doneToday={doneToday} />
       </div>
 
+      {/* Pesquisa de opinião — fica logo no topo, não escondida em notificação */}
+      <NpsBanner />
+
       {/* Frase do dia — tratamento editorial */}
       <div className="mt-7">
         <GlassCard>
@@ -519,7 +522,6 @@ function HomeScreen({ name, go, isAdmin, isLeader }: { name: string; go: (id: Ta
         </GlassCard>
       </div>
 
-      <NpsBanner />
       <DiscBanner go={go} />
       <InstallBanner go={go} />
       <HomeNotifications />
