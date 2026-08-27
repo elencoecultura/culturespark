@@ -201,21 +201,32 @@ export const sendKudos = createServerFn({ method: "POST" })
       throw new Error("Essa mensagem não é apropriada pro ambiente corporativo — revise o texto e tente de novo.");
     }
 
-    // Máximo 2 elogios enviados por dia (fuso America/Sao_Paulo) — evita
-    // gente mandando vários só pra pontuar no ranking.
-    const KUDOS_PER_DAY_LIMIT = 2;
-    const { data: recentSent } = await context.supabase
-      .from("kudos")
-      .select("created_at")
-      .eq("from_user", context.userId)
-      .order("created_at", { ascending: false })
-      .limit(20);
-    const tz = "America/Sao_Paulo";
-    const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
-    const todayKey = fmt.format(new Date());
-    const sentToday = (recentSent ?? []).filter((r) => fmt.format(new Date(r.created_at as string)) === todayKey).length;
-    if (sentToday >= KUDOS_PER_DAY_LIMIT) {
-      throw new Error(`Você já mandou ${KUDOS_PER_DAY_LIMIT} elogios hoje — volta amanhã pra mandar mais.`);
+    // Máximo 4 elogios "normais" por dia (fuso America/Sao_Paulo) — evita
+    // gente mandando vários só pra pontuar no ranking. Elogio de aniversário
+    // (category "aniversario") não entra nessa conta nem é bloqueado por
+    // ela — é celebração, não é o elogio que a gente quer limitar.
+    const KUDOS_PER_DAY_LIMIT = 4;
+    const isBirthdayKudos = data.category === "aniversario";
+    if (!isBirthdayKudos) {
+      // filtra "aniversario" em JS (não no banco): .neq() no Postgres exclui
+      // category NULL também (comparação com NULL vira desconhecido), o que
+      // ia derrubar a contagem pra quase todo mundo, já que elogio normal
+      // sempre tem category null.
+      const { data: recentSent } = await context.supabase
+        .from("kudos")
+        .select("created_at, category")
+        .eq("from_user", context.userId)
+        .order("created_at", { ascending: false })
+        .limit(40);
+      const tz = "America/Sao_Paulo";
+      const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+      const todayKey = fmt.format(new Date());
+      const sentToday = (recentSent ?? []).filter(
+        (r) => r.category !== "aniversario" && fmt.format(new Date(r.created_at as string)) === todayKey,
+      ).length;
+      if (sentToday >= KUDOS_PER_DAY_LIMIT) {
+        throw new Error(`Você já mandou ${KUDOS_PER_DAY_LIMIT} elogios hoje — volta amanhã pra mandar mais.`);
+      }
     }
 
     const { error } = await context.supabase.from("kudos").insert({

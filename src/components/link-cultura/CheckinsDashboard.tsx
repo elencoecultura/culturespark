@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Gauge, Smile, MessageCircle, HeartCrack, ChevronDown } from "lucide-react";
+import { Loader2, Gauge, Smile, MessageCircle, HeartCrack, ChevronDown, ChefHat } from "lucide-react";
 import { getCheckinsByHouse } from "@/lib/checkins-dashboard.functions";
 
 type HouseRow = Awaited<ReturnType<typeof getCheckinsByHouse>>["rows"][number];
+type MoodDist = { baixoPct: number; medioPct: number; altoPct: number; total: number };
 
 function toneFor(pct: number): "good" | "warn" | "bad" {
   if (pct >= 80) return "good";
@@ -68,6 +69,32 @@ function MiniStat({ icon: Icon, label, value }: { icon: React.ComponentType<{ si
   );
 }
 
+function MoodDistBar({ dist }: { dist: MoodDist }) {
+  if (!dist.total) {
+    return <div className="text-[11px] text-white/40">Sem check-ins no período pra calcular energia.</div>;
+  }
+  return (
+    <div>
+      <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-white/10">
+        {dist.baixoPct > 0 && <div className="bg-magic-red" style={{ width: `${dist.baixoPct}%` }} />}
+        {dist.medioPct > 0 && <div className="bg-magic-amber" style={{ width: `${dist.medioPct}%` }} />}
+        {dist.altoPct > 0 && <div className="bg-magic-green" style={{ width: `${dist.altoPct}%` }} />}
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-white/65">
+        <span className="flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-magic-red" /> {dist.baixoPct}% baixa (≤2)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-magic-amber" /> {dist.medioPct}% média (3)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-magic-green" /> {dist.altoPct}% alta (≥4)
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function Sparkline({ byDay, headcount, days }: { byDay: number[]; headcount: number; days: string[] }) {
   const max = Math.max(headcount, 1);
   return (
@@ -81,6 +108,27 @@ function Sparkline({ byDay, headcount, days }: { byDay: number[]; headcount: num
               className={`w-full rounded-[3px] transition-all ${count > 0 ? TONE_BAR[tone] : "bg-white/10"}`}
               style={{ height: `${pct}%`, opacity: count > 0 ? 0.85 : 1 }}
             />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SetorBreakdown({ bySetor }: { bySetor: HouseRow["bySetor"] }) {
+  if (bySetor.length <= 1) return null;
+  return (
+    <div className="mt-3 grid gap-1.5">
+      {bySetor.map((s) => {
+        const tone = toneFor(s.todayPct);
+        return (
+          <div key={s.setor} className="glass-chip flex items-center gap-2 rounded-xl px-3 py-2">
+            <ChefHat size={13} className="shrink-0 text-white/50" />
+            <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-white">{s.setor}</span>
+            <span className="shrink-0 text-[11px] text-white/55">{s.headcount} pessoas</span>
+            <span className={`shrink-0 text-[13px] font-black ${TONE_TEXT[tone]}`}>
+              {s.todayCount}/{s.headcount}
+            </span>
           </div>
         );
       })}
@@ -107,6 +155,11 @@ function HouseCard({ row, days }: { row: HouseRow; days: string[] }) {
         </div>
       </div>
 
+      <div className="mt-3">
+        <div className="mb-1 text-[10px] uppercase tracking-[0.08em] text-white/50">Energia (30 dias)</div>
+        <MoodDistBar dist={row.moodDist} />
+      </div>
+
       <div className="mt-3 grid grid-cols-2 gap-1.5">
         <MiniStat icon={Smile} label="Humor médio" value={row.avgMood != null ? `${row.avgMood}/5` : "—"} />
         <MiniStat icon={HeartCrack} label="Alertas energia" value={String(row.lowEnergyAlerts)} />
@@ -119,10 +172,15 @@ function HouseCard({ row, days }: { row: HouseRow; days: string[] }) {
         onClick={() => setOpen((o) => !o)}
         className="mt-3 flex w-full items-center justify-center gap-1 rounded-xl py-1.5 text-[11.5px] font-semibold text-white/60 hover:text-white/85"
       >
-        {open ? "Esconder histórico diário" : "Ver histórico diário"}
+        {open ? "Esconder detalhes" : "Ver detalhes (setor + histórico)"}
         <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
-      {open && <Sparkline byDay={row.byDay} headcount={row.headcount} days={days} />}
+      {open && (
+        <>
+          <SetorBreakdown bySetor={row.bySetor} />
+          <Sparkline byDay={row.byDay} headcount={row.headcount} days={days} />
+        </>
+      )}
     </div>
   );
 }
@@ -169,11 +227,22 @@ export default function CheckinsDashboard() {
       )}
 
       {q.data && (
-        <div className="grid gap-3">
-          {q.data.rows.map((r) => (
-            <HouseCard key={r.house} row={r} days={q.data.days} />
-          ))}
-        </div>
+        <>
+          <div className="glass-soft rounded-[22px] p-4">
+            <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/55">
+              Energia geral do elenco (30 dias)
+            </div>
+            <div className="mt-2">
+              <MoodDistBar dist={q.data.moodDistOverall} />
+            </div>
+          </div>
+
+          <div className="grid gap-3">
+            {q.data.rows.map((r) => (
+              <HouseCard key={r.house} row={r} days={q.data.days} />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

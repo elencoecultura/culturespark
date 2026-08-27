@@ -101,12 +101,18 @@ export const submitNpsResponse = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.from("nps_responses").insert({
-      survey_id: data.survey_id,
-      user_id: context.userId,
-      score: data.score,
-      comment: data.comment ?? null,
-    });
+    // upsert (não insert simples): a tabela tem UNIQUE(survey_id, user_id),
+    // então quem já respondeu precisa poder responder de novo e a resposta
+    // nova substituir a antiga, em vez de dar erro de duplicidade.
+    const { error } = await context.supabase.from("nps_responses").upsert(
+      {
+        survey_id: data.survey_id,
+        user_id: context.userId,
+        score: data.score,
+        comment: data.comment ?? null,
+      },
+      { onConflict: "survey_id,user_id" },
+    );
     if (error) throw new Error(error.message);
     return { ok: true };
   });

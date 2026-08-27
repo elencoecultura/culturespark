@@ -25,8 +25,9 @@ export function NpsBanner() {
     onError: (e: any) => toast.error(e.message),
   });
 
-  if (!q.data?.survey || q.data.answered || dismissed) return null;
+  if (!q.data?.survey || dismissed) return null;
   const s = q.data.survey;
+  const alreadyAnswered = q.data.answered;
 
   return (
     <div className="mt-4 glass-soft rounded-[28px] p-3.5 text-white">
@@ -35,12 +36,14 @@ export function NpsBanner() {
           <Star size={16} />
         </span>
         <button onClick={() => setOpen((v) => !v)} className="min-w-0 flex-1 text-left">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/55">Pesquisa rápida</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/55">
+            {alreadyAnswered ? "Você já respondeu" : "Pesquisa rápida"}
+          </div>
           <div className="truncate text-[13.5px] font-semibold">{s.title}</div>
         </button>
         {!open && (
           <button onClick={() => setOpen(true)} className="glass-chip shrink-0 rounded-full px-3 py-1.5 text-[12px] font-semibold">
-            Responder
+            {alreadyAnswered ? "Responder de novo" : "Responder"}
           </button>
         )}
         <button onClick={() => setDismissed(true)} className="shrink-0 rounded-full p-1.5 text-white/60 transition hover:bg-white/10" aria-label="Dispensar pesquisa">

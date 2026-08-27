@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { read, utils } from "xlsx";
-import { Loader2, Upload, Trash2, FileSpreadsheet, Check, X, Search, Users, UserPlus, Eye, EyeOff } from "lucide-react";
+import { Loader2, Upload, Trash2, FileSpreadsheet, Check, X, Search, Users, UserPlus, Eye, EyeOff, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { confirmAction } from "@/lib/confirm";
 import {
@@ -218,6 +218,164 @@ function PreRegRow({ row: r, onDelete }: { row: PreRegRowData; onDelete: () => v
   );
 }
 
+const PERFIL_OPTIONS = ["ELENCO", "LÍDER", "GERENTE", "DIREÇÃO", "ADMIN"];
+
+function ManualAddForm({
+  negocios,
+  onSubmit,
+  isPending,
+}: {
+  negocios: string[];
+  onSubmit: (row: Row) => void;
+  isPending: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [cargo, setCargo] = useState("");
+  const [setor, setSetor] = useState("");
+  const [perfil, setPerfil] = useState("ELENCO");
+  const [negocio, setNegocio] = useState("");
+
+  function reset() {
+    setFullName("");
+    setEmail("");
+    setCargo("");
+    setSetor("");
+    setPerfil("ELENCO");
+    setNegocio("");
+  }
+
+  const canSubmit = fullName.trim().length >= 2 && negocio.trim().length > 0;
+
+  return (
+    <div className="glass-soft rounded-[28px] p-5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 text-white"
+      >
+        <span className="flex items-center gap-2">
+          <Plus className="h-5 w-5" />
+          <span className="text-[17px] font-bold">Cadastrar pessoa manualmente</span>
+        </span>
+        <span className="text-[12px] text-white/60">{open ? "fechar" : "abrir"}</span>
+      </button>
+
+      {open && (
+        <div className="mt-4 grid gap-2.5">
+          <label className="block">
+            <span className="ml-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-white/60">
+              Nome completo *
+            </span>
+            <input
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="Como está na carteira de trabalho"
+              className="mt-1 w-full rounded-xl bg-white/10 px-3 py-2 text-[13px] text-white outline-none placeholder:text-white/40"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-2.5">
+            <label className="block">
+              <span className="ml-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-white/60">
+                Cargo
+              </span>
+              <input
+                value={cargo}
+                onChange={(e) => setCargo(e.target.value)}
+                placeholder="GARÇOM JUNIOR"
+                className="mt-1 w-full rounded-xl bg-white/10 px-3 py-2 text-[13px] text-white outline-none placeholder:text-white/40"
+              />
+            </label>
+            <label className="block">
+              <span className="ml-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-white/60">
+                Setor
+              </span>
+              <input
+                value={setor}
+                onChange={(e) => setSetor(e.target.value)}
+                placeholder="SALÃO"
+                className="mt-1 w-full rounded-xl bg-white/10 px-3 py-2 text-[13px] text-white outline-none placeholder:text-white/40"
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            <label className="block">
+              <span className="ml-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-white/60">
+                Perfil
+              </span>
+              <select
+                value={perfil}
+                onChange={(e) => setPerfil(e.target.value)}
+                className="mt-1 w-full rounded-xl bg-white/10 px-3 py-2 text-[13px] text-white outline-none [&>option]:bg-blu"
+              >
+                {PERFIL_OPTIONS.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="ml-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-white/60">
+                Negócio *
+              </span>
+              <input
+                value={negocio}
+                onChange={(e) => setNegocio(e.target.value)}
+                placeholder="PIZZARIA ONYRA"
+                list="negocios-existentes"
+                className="mt-1 w-full rounded-xl bg-white/10 px-3 py-2 text-[13px] text-white outline-none placeholder:text-white/40"
+              />
+              <datalist id="negocios-existentes">
+                {negocios.map((n) => (
+                  <option key={n} value={n} />
+                ))}
+              </datalist>
+            </label>
+          </div>
+          <label className="block">
+            <span className="ml-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-white/60">
+              Email (opcional)
+            </span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="pessoa@email.com — deixa em branco se não souber ainda"
+              className="mt-1 w-full rounded-xl bg-white/10 px-3 py-2 text-[13px] text-white outline-none placeholder:text-white/40"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={!canSubmit || isPending}
+            onClick={() => {
+              onSubmit({
+                full_name: fullName.trim(),
+                email: email.trim() || null,
+                cargo: cargo.trim() || null,
+                setor: setor.trim() || null,
+                perfil,
+                negocio: negocio.trim(),
+              });
+              reset();
+              setOpen(false);
+            }}
+            className="mt-1 flex items-center justify-center gap-1.5 rounded-2xl bg-magic-green px-4 py-2.5 text-[13px] font-semibold text-white disabled:opacity-50"
+          >
+            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Adicionar ao pré-cadastro
+          </button>
+          <p className="text-[11px] text-white/50">
+            Assim que a pessoa criar a própria conta (nome batendo com o que você digitou aqui), o
+            pré-cadastro é reivindicado automaticamente — não precisa fazer mais nada.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PreRegistrationsAdmin() {
   const qc = useQueryClient();
   const importFn = useServerFn(importPreRegistrations);
@@ -248,6 +406,19 @@ export default function PreRegistrationsAdmin() {
       if (fileRef.current) fileRef.current.value = "";
     },
     onError: (e: Error) => toast.error("Falha no import", { description: e.message }),
+  });
+
+  const addOne = useMutation({
+    mutationFn: (row: Row) => importFn({ data: { rows: [row], replaceAll: false } }),
+    onSuccess: (res, row) => {
+      qc.invalidateQueries({ queryKey: ["pre-regs"] });
+      if (res.skipped > 0) {
+        toast.error("Não rolou adicionar", { description: "Já existe alguém com esse nome ou email no pré-cadastro." });
+      } else {
+        toast.success(`${row.full_name} adicionado ao pré-cadastro`);
+      }
+    },
+    onError: (e: Error) => toast.error("Falha ao adicionar", { description: e.message }),
   });
 
   const del = useMutation({
@@ -294,6 +465,8 @@ export default function PreRegistrationsAdmin() {
 
   return (
     <div className="space-y-4">
+      <ManualAddForm negocios={negocios} onSubmit={(row) => addOne.mutate(row)} isPending={addOne.isPending} />
+
       {/* Upload card */}
       <div className="glass-soft rounded-[28px] p-5">
         <div className="flex items-center gap-2 text-white">
