@@ -439,7 +439,11 @@ function NpsAdminBlock() {
                   </button>
                   {isActive && (
                     <button
-                      onClick={() => close.mutate(s.id)}
+                      onClick={() =>
+                        confirmAction(`Encerrar a pesquisa "${s.title}"? Ninguém mais vai conseguir responder.`, () =>
+                          close.mutate(s.id),
+                        )
+                      }
                       className="rounded-lg bg-magic-red/20 border border-magic-red/30 px-2 py-1 text-[11px] hover:bg-magic-red/30"
                     >
                       Encerrar
