@@ -300,7 +300,10 @@ function NpsAdminBlock() {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["nps-surveys"], queryFn: () => listFn() });
   const history = useQuery({ queryKey: ["nps-history"], queryFn: () => historyFn() });
-  const [title, setTitle] = useState("Como está sua experiência este mês?");
+  const [title, setTitle] = useState("Sua opinião importa");
+  const [question, setQuestion] = useState(
+    "Em uma escala de 0 a 10, o quanto você recomendaria trabalhar na Hector Studios para um amigo?",
+  );
   const [days, setDays] = useState(2);
   const [openResults, setOpenResults] = useState<string | null>(null);
 
@@ -311,6 +314,7 @@ function NpsAdminBlock() {
       return createFn({
         data: {
           title,
+          question,
           opens_at: opens.toISOString(),
           closes_at: closes.toISOString(),
         },
@@ -353,12 +357,23 @@ function NpsAdminBlock() {
       <div className="glass-strong rounded-[26px] p-5">
         <label className="block">
           <span className="ml-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
-            Pergunta principal
+            Título (curto, aparece fechado no card)
           </span>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="glass-input mt-2 w-full rounded-2xl px-4 py-3 text-[14px] text-white outline-none"
+          />
+        </label>
+        <label className="mt-3 block">
+          <span className="ml-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
+            Pergunta (o texto que a pessoa lê pra responder)
+          </span>
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            rows={3}
+            className="glass-input mt-2 w-full resize-none rounded-2xl px-4 py-3 text-[14px] text-white outline-none"
           />
         </label>
         <label className="mt-3 block">
@@ -376,7 +391,7 @@ function NpsAdminBlock() {
         </label>
         <button
           onClick={() => create.mutate()}
-          disabled={create.isPending || !title.trim()}
+          disabled={create.isPending || !title.trim() || !question.trim()}
           className="mt-4 w-full rounded-2xl bg-brand-grad px-5 py-3 text-[14px] font-semibold text-white shadow-glow disabled:opacity-50"
         >
           {create.isPending ? "Publicando..." : "Publicar pesquisa"}
