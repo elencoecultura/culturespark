@@ -101,18 +101,25 @@ export const submitNpsResponse = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    // upsert (não insert simples): a tabela tem UNIQUE(survey_id, user_id),
-    // então quem já respondeu precisa poder responder de novo e a resposta
-    // nova substituir a antiga, em vez de dar erro de duplicidade.
-    const { error } = await context.supabase.from("nps_responses").upsert(
-      {
-        survey_id: data.survey_id,
-        user_id: context.userId,
-        score: data.score,
-        comment: data.comment ?? null,
-      },
-      { onConflict: "survey_id,user_id" },
-    );
+    // Só 1 resposta por pessoa por pesquisa — a tabela já tem
+    // UNIQUE(survey_id, user_id), então um insert simples falha sozinho se
+    // a pessoa tentar de novo; a checagem explícita aqui só é pra dar uma
+    // mensagem clara em vez do erro cru do Postgres.
+    const { data: existing } = await context.supabase
+      .from("nps_responses")
+      .select("id")
+      .eq("survey_id", data.survey_id)
+      .eq("user_id", context.userId)
+      .maybeSingle();
+    if (existing) {
+      throw new Error("Você já respondeu essa pesquisa.");
+    }
+    const { error } = await context.supabase.from("nps_responses").insert({
+      survey_id: data.survey_id,
+      user_id: context.userId,
+      score: data.score,
+      comment: data.comment ?? null,
+    });
     if (error) throw new Error(error.message);
     return { ok: true };
   });
