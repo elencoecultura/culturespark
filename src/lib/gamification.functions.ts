@@ -199,7 +199,13 @@ export const getAttractionLeaderboard = createServerFn({ method: "POST" })
 export const markScheduleCompleted = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({ id: z.string().uuid(), completed: z.boolean() }).parse(d),
+    z
+      .object({
+        user_id: z.string().uuid(),
+        week_start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        completed: z.boolean(),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     // "leader" não existe mais como papel (virou "lider"/"gerente"/"direcao").
@@ -209,10 +215,38 @@ export const markScheduleCompleted = createServerFn({ method: "POST" })
       ),
     );
     if (!checks.some((c: any) => c.data)) throw new Error("Forbidden");
-    const { error } = await context.supabase
+
+    const { data: existing } = await context.supabase
       .from("weekly_schedules")
-      .update({ completed_full: data.completed })
-      .eq("id", data.id);
+      .select("id")
+      .eq("user_id", data.user_id)
+      .eq("week_start", data.week_start)
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await context.supabase
+        .from("weekly_schedules")
+        .update({ completed_full: data.completed })
+        .eq("id", existing.id);
+      if (error) throw new Error(error.message);
+      return { ok: true };
+    }
+
+    // Ainda não existe escala lançada pra essa pessoa nessa semana — cria uma
+    // com os dados básicos do perfil só pra registrar a semana cumprida.
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("attraction, weekly_hours")
+      .eq("id", data.user_id)
+      .maybeSingle();
+    const { error } = await context.supabase.from("weekly_schedules").insert({
+      user_id: data.user_id,
+      week_start: data.week_start,
+      attraction: profile?.attraction ?? "Hector Studios",
+      weekly_hours: profile?.weekly_hours ?? 44,
+      completed_full: data.completed,
+      created_by: context.userId,
+    });
     if (error) throw new Error(error.message);
     return { ok: true };
   });

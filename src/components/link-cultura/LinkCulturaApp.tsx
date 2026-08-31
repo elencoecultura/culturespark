@@ -54,7 +54,7 @@ import CheckinsDashboard from "./CheckinsDashboard";
 import { SUPREME_EMAILS } from "@/lib/wellbeing.functions";
 import { HeartCrack, Flag, ShieldAlert } from "lucide-react";
 import { listUsers, createUser, updateUser } from "@/lib/admin.functions";
-import { ATTRACTIONS } from "@/lib/schedule.functions";
+import { ATTRACTIONS, listWeekSchedule } from "@/lib/schedule.functions";
 import {
   getMyGamification,
   getAttractionLeaderboard,
@@ -787,7 +787,27 @@ function TeamScreen({ isAdmin }: { isAdmin: boolean }) {
   const usersFn = useServerFn(listUsers);
   const create = useServerFn(createUser);
   const update = useServerFn(updateUser);
+  const weekScheduleFn = useServerFn(listWeekSchedule);
+  const markCompletedFn = useServerFn(markScheduleCompleted);
   const { data: people } = useQuery({ queryKey: ["users"], queryFn: () => usersFn() });
+  const weekStart = useMemo(() => getWeekStart(), []);
+  const { data: weekRows } = useQuery({
+    queryKey: ["week-schedule", weekStart],
+    queryFn: () => weekScheduleFn({ data: { week_start: weekStart } }),
+  });
+  const completedByUser = useMemo(
+    () => new Map((weekRows ?? []).map((r) => [r.user_id, r.completed_full])),
+    [weekRows],
+  );
+  const markCompleted = useMutation({
+    mutationFn: (v: { user_id: string; completed: boolean }) =>
+      markCompletedFn({ data: { user_id: v.user_id, week_start: weekStart, completed: v.completed } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["week-schedule", weekStart] });
+      qc.invalidateQueries({ queryKey: ["gamification"] });
+    },
+    onError: (e: any) => toast.error("Falhou", { description: e.message }),
+  });
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     email: "",
@@ -847,13 +867,23 @@ function TeamScreen({ isAdmin }: { isAdmin: boolean }) {
               <span>·</span>
               <span>folgas: {(p.days_off ?? []).join(", ") || "—"}</span>
             </div>
-            {isAdmin && (
-              <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex gap-2">
+              {isAdmin && (
                 <button onClick={() => toggle.mutate(p)} className="glass-chip flex-1 rounded-2xl py-2 text-[12px] font-semibold">
                   {p.active ? "Desativar" : "Reativar"}
                 </button>
-              </div>
-            )}
+              )}
+              <button
+                onClick={() => markCompleted.mutate({ user_id: p.id, completed: !completedByUser.get(p.id) })}
+                disabled={markCompleted.isPending}
+                className={
+                  "flex-1 rounded-2xl py-2 text-[12px] font-semibold transition disabled:opacity-50 " +
+                  (completedByUser.get(p.id) ? "bg-magic-green/25 text-white ring-1 ring-magic-green/50" : "glass-chip")
+                }
+              >
+                {completedByUser.get(p.id) ? "✓ Semana cumprida" : "Marcar semana cumprida (+20)"}
+              </button>
+            </div>
           </GlassCard>
         ))}
       </div>
