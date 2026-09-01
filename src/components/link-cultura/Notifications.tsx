@@ -291,6 +291,112 @@ export function BroadcastAdminScreen() {
   );
 }
 
+// Versão só-leitura pra líder/gerente/direção: mesmos números (NPS, promotores/
+// neutros/detratores, evolução mensal, comentários) mas escopados ao time da
+// pessoa pelas mesmas regras de listUsers — sem criar/encerrar pesquisa.
+export function NpsResultsScreen() {
+  const listFn = useServerFn(listNpsSurveys);
+  const resultsFn = useServerFn(getNpsResults);
+  const historyFn = useServerFn(getNpsHistory);
+  const list = useQuery({ queryKey: ["nps-surveys"], queryFn: () => listFn() });
+  const history = useQuery({ queryKey: ["nps-history"], queryFn: () => historyFn() });
+  const [openResults, setOpenResults] = useState<string | null>(null);
+
+  const results = useQuery({
+    queryKey: ["nps-results", openResults],
+    queryFn: () => resultsFn({ data: { survey_id: openResults! } }),
+    enabled: !!openResults,
+  });
+
+  return (
+    <div className="text-white">
+      <div className="mb-3 px-1">
+        <div className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-white/60">NPS mensal</div>
+        <h2 className="mt-1 font-display text-[22px] font-black tracking-[-0.03em] text-white">Resultados do seu time</h2>
+        <p className="mt-1 text-[12.5px] text-white/60">Só as respostas de quem está sob sua liderança.</p>
+      </div>
+
+      {(history.data?.history.filter((h) => h.total > 0).length ?? 0) > 1 && (
+        <div className="glass-strong rounded-[26px] p-5">
+          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
+            Evolução do NPS
+          </div>
+          <div className="flex items-end gap-2.5 overflow-x-auto pb-1">
+            {(history.data?.history ?? [])
+              .filter((h) => h.total > 0)
+              .map((h) => {
+                const pct = ((h.nps ?? 0) + 100) / 2;
+                const color =
+                  (h.nps ?? 0) >= 50 ? "bg-magic-green" : (h.nps ?? 0) >= 0 ? "bg-magic-amber" : "bg-magic-red";
+                return (
+                  <div key={h.survey_id} className="flex w-12 shrink-0 flex-col items-center gap-1.5">
+                    <div className="text-[12px] font-bold text-white">{h.nps}</div>
+                    <div className="h-20 w-full overflow-hidden rounded-lg bg-white/10">
+                      <div
+                        className={`w-full ${color}`}
+                        style={{ height: `${Math.max(4, pct)}%`, marginTop: `${100 - Math.max(4, pct)}%` }}
+                      />
+                    </div>
+                    <div className="text-[10px] capitalize text-white/60">{h.month}</div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-2">
+        {(list.data ?? []).map((s: any) => {
+          const now = Date.now();
+          const isActive = s.active && new Date(s.opens_at).getTime() <= now && new Date(s.closes_at).getTime() >= now;
+          return (
+            <div key={s.id} className="glass-chip rounded-2xl p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="font-display text-[14px] font-bold text-white">{s.title}</div>
+                  <div className="mt-1 text-[11px] text-white/60">
+                    {new Date(s.opens_at).toLocaleDateString("pt-BR")} → {new Date(s.closes_at).toLocaleDateString("pt-BR")}
+                    {isActive ? " · ativa" : " · encerrada"}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setOpenResults(openResults === s.id ? null : s.id)}
+                  className="rounded-lg bg-white/10 border border-white/20 px-2 py-1 text-[11px] hover:bg-white/20"
+                >
+                  Resultados
+                </button>
+              </div>
+              {openResults === s.id && results.data && (
+                <div className="mt-3 rounded-xl bg-black/20 p-3 text-white">
+                  <div className="grid grid-cols-4 gap-2 text-center text-[11px]">
+                    <div><div className="text-lg font-bold">{results.data.nps}</div><div className="text-white/60">NPS</div></div>
+                    <div><div className="text-lg font-bold text-magic-green">{results.data.promoters}</div><div className="text-white/60">Promotores</div></div>
+                    <div><div className="text-lg font-bold text-magic-amber">{results.data.passives}</div><div className="text-white/60">Neutros</div></div>
+                    <div><div className="text-lg font-bold text-magic-red">{results.data.detractors}</div><div className="text-white/60">Detratores</div></div>
+                  </div>
+                  <div className="mt-3 space-y-1 max-h-40 overflow-auto">
+                    {(results.data.comments ?? []).filter((c: any) => c.comment).map((c: any, i: number) => (
+                      <div key={i} className="rounded-lg bg-white/5 px-3 py-1.5 text-[12px]">
+                        <span className="font-bold mr-2">{c.score}</span>{c.comment}
+                      </div>
+                    ))}
+                    {results.data.total === 0 && <div className="text-[12px] text-white/60">Seu time ainda não respondeu.</div>}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {list.data && list.data.length === 0 && (
+          <div className="glass-chip rounded-2xl p-6 text-center text-[13px] text-white/70">
+            Nenhuma pesquisa NPS ainda.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function NpsAdminBlock() {
   const listFn = useServerFn(listNpsSurveys);
   const createFn = useServerFn(createNpsSurvey);

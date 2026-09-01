@@ -7,6 +7,35 @@ async function isAdmin(supabase: any, userId: string) {
   return !!data;
 }
 
+// Mesmo escopo usado no resto do app (listUsers/listTodayCheckins): líder
+// comum só vê quem reporta direto pra ele, gerente/direção vê a atração
+// inteira, admin (ou attraction/negocio="TODOS") vê tudo. Retorna `null`
+// quando o escopo é "vê tudo" — quem chama trata isso como "sem filtro".
+const LEADERSHIP_ROLES = ["admin", "lider", "leader", "gerente", "direcao"] as const;
+async function scopedRespondentIds(supabase: any, userId: string): Promise<string[] | null> {
+  const checks = await Promise.all(
+    LEADERSHIP_ROLES.map((role) => supabase.rpc("has_role", { _user_id: userId, _role: role })),
+  );
+  const [isAdminRole, , , isGerente, isDirecao] = checks.map((c: any) => c.data);
+  if (!checks.some((c: any) => c.data)) throw new Error("Forbidden");
+
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: myProfile } = await supabaseAdmin
+    .from("profiles")
+    .select("attraction, negocio")
+    .eq("id", userId)
+    .maybeSingle();
+  const hasTodosScope = myProfile?.attraction === "TODOS" || myProfile?.negocio === "TODOS";
+  if (isAdminRole || hasTodosScope) return null;
+
+  let q = supabaseAdmin.from("profiles").select("id");
+  q = isGerente || isDirecao
+    ? q.eq("attraction", myProfile?.attraction ?? "__none__")
+    : q.or(`manager_id.eq.${userId},co_leader_id.eq.${userId}`);
+  const { data: profiles } = await q;
+  return (profiles ?? []).map((p: { id: string }) => p.id);
+}
+
 const NPS_WINDOW_DAYS = 3;
 
 // Cadência automática do NPS: cria a pesquisa do mês no dia 1 (se ainda não
@@ -127,7 +156,9 @@ export const submitNpsResponse = createServerFn({ method: "POST" })
 export const listNpsSurveys = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    if (!(await isAdmin(context.supabase, context.userId))) throw new Error("Forbidden");
+    // Só valida que a pessoa tem algum papel de liderança — o conteúdo em si
+    // (resultados por pesquisa) é escopado à parte em getNpsResults/getNpsHistory.
+    await scopedRespondentIds(context.supabase, context.userId);
     const { data, error } = await context.supabase
       .from("nps_surveys")
       .select("*")
@@ -170,11 +201,13 @@ export const getNpsResults = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ survey_id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    if (!(await isAdmin(context.supabase, context.userId))) throw new Error("Forbidden");
-    const { data: rows } = await context.supabase
+    const scope = await scopedRespondentIds(context.supabase, context.userId);
+    let q = context.supabase
       .from("nps_responses")
-      .select("score, comment, created_at")
+      .select("score, comment, created_at, user_id")
       .eq("survey_id", data.survey_id);
+    if (scope) q = scope.length ? q.in("user_id", scope) : q.eq("user_id", "__none__");
+    const { data: rows } = await q;
     const r = rows ?? [];
     const total = r.length;
     const promoters = r.filter((x: any) => x.score >= 9).length;
@@ -187,7 +220,7 @@ export const getNpsResults = createServerFn({ method: "GET" })
 export const getNpsHistory = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    if (!(await isAdmin(context.supabase, context.userId))) throw new Error("Forbidden");
+    const scope = await scopedRespondentIds(context.supabase, context.userId);
     const { data: surveys, error } = await context.supabase
       .from("nps_surveys")
       .select("id, title, opens_at, closes_at")
@@ -195,9 +228,11 @@ export const getNpsHistory = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
 
     const ids = (surveys ?? []).map((s) => s.id);
-    const { data: rows } = ids.length
-      ? await context.supabase.from("nps_responses").select("survey_id, score").in("survey_id", ids)
-      : { data: [] as Array<{ survey_id: string; score: number }> };
+    let rq = ids.length
+      ? context.supabase.from("nps_responses").select("survey_id, score, user_id").in("survey_id", ids)
+      : null;
+    if (rq && scope) rq = scope.length ? rq.in("user_id", scope) : rq.eq("user_id", "__none__");
+    const { data: rows } = rq ? await rq : { data: [] as Array<{ survey_id: string; score: number }> };
 
     const bySurvey = new Map<string, number[]>();
     for (const r of rows ?? []) {

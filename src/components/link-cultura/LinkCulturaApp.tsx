@@ -72,7 +72,7 @@ import GamificationAnalyticsAdmin from "./GamificationAnalyticsAdmin";
 import { BusinessProvider } from "./BusinessContext";
 import BusinessSelector from "./BusinessSelector";
 import { getDailyPhrase, getPillar } from "@/lib/culture-content";
-import { NotificationsBell, BroadcastAdminScreen } from "./Notifications";
+import { NotificationsBell, BroadcastAdminScreen, NpsResultsScreen } from "./Notifications";
 import { NpsBanner, HomeNotifications } from "./HomeExtras";
 import CultureOverview from "./CultureOverview";
 import AccountsAdmin from "./AccountsAdmin";
@@ -1773,7 +1773,7 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
 
 /* ---------- Shell ---------- */
 
-type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "kudos-audit" | "iluminari-admin" | "checkins-dashboard" | "culture-overview" | "install-guide" | "accounts-admin";
+type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "kudos-audit" | "iluminari-admin" | "checkins-dashboard" | "culture-overview" | "install-guide" | "accounts-admin" | "nps-results";
 
 function BottomNav({
   active,
@@ -1886,6 +1886,7 @@ export default function LinkCulturaApp() {
         { id: "points", label: "Gamificação", icon: Trophy, desc: "Ranking e conquistas" },
         { id: "analytics", label: "Performance da gamificação", icon: BarChart3, desc: "Consultas e snapshots por período" },
         { id: "vagas", label: "Vagas", icon: Briefcase, desc: "Briefings e recrutamento" },
+        { id: "nps-results", label: "Resultados do NPS", icon: Star, desc: "NPS e evolução do seu time" },
       ];
       if (!isAdmin) gestao.push({ id: "team", label: "Elenco", icon: Users, desc: "Gerenciar pessoas" });
       groups.push({ title: "Gestão", items: gestao });
@@ -1956,6 +1957,7 @@ export default function LinkCulturaApp() {
       case "cycle": return <GamificationCycleAdmin />;
       case "analytics": return <GamificationAnalyticsAdmin />;
       case "broadcast": return <BroadcastAdminScreen />;
+      case "nps-results": return <NpsResultsScreen />;
       default: return <HomeScreen name={name} go={setTab} isAdmin={isAdmin} isLeader={isLeader} />;
     }
   }, [tab, isLeader, isAdmin, isLoading, profile, name]);
