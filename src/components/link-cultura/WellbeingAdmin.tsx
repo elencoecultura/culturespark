@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
-import { HeartCrack, Loader2, ShieldAlert } from "lucide-react";
+import { ChevronDown, HeartCrack, Loader2, ShieldAlert } from "lucide-react";
 import { getMoodConcerns } from "@/lib/wellbeing.functions";
+import { getWellbeingTimeline } from "@/lib/wellbeing-timeline.functions";
+import { LineChartSvg } from "./WellbeingTimelineScreen";
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -11,9 +14,27 @@ function timeAgo(iso: string) {
   return `há ${days} dias`;
 }
 
+function IndividualTimeline({ userId }: { userId: string }) {
+  const fn = useServerFn(getWellbeingTimeline);
+  const q = useQuery({
+    queryKey: ["wellbeing-timeline", "individual", userId],
+    queryFn: () => fn({ data: { period: "mes", mode: "individual", user_id: userId } }),
+  });
+  if (q.isLoading) return <Loader2 className="mx-auto my-4 h-4 w-4 animate-spin text-white/60" />;
+  if (!q.data || q.data.series.every((s) => s.values.every((v) => v === null))) {
+    return <div className="py-3 text-center text-[12px] text-white/50">Sem histórico de humor este mês.</div>;
+  }
+  return (
+    <div className="mt-2">
+      <LineChartSvg buckets={q.data.buckets} series={q.data.series} />
+    </div>
+  );
+}
+
 export default function WellbeingAdmin() {
   const fn = useServerFn(getMoodConcerns);
   const q = useQuery({ queryKey: ["mood-concerns"], queryFn: () => fn() });
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const concerning = (q.data?.rows ?? []).filter((r) => r.streak >= 2 || r.lowCount >= 3);
   const rest = (q.data?.rows ?? []).filter((r) => !(r.streak >= 2 || r.lowCount >= 3));
@@ -55,7 +76,12 @@ export default function WellbeingAdmin() {
             Atenção
           </div>
           {concerning.map((r) => (
-            <div key={r.user_id} className="glass-chip rounded-2xl border border-magic-amber/40 p-4">
+            <button
+              key={r.user_id}
+              type="button"
+              onClick={() => setOpenId(openId === r.user_id ? null : r.user_id)}
+              className="w-full text-left glass-chip rounded-2xl border border-magic-amber/40 p-4"
+            >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 text-sm font-semibold text-white">
@@ -74,11 +100,13 @@ export default function WellbeingAdmin() {
                     <div className="mt-1.5 text-[12px] italic text-white/60">"{r.lastNote}"</div>
                   )}
                 </div>
-                <div className="shrink-0 text-right text-[11px] text-white/50">
+                <div className="flex shrink-0 flex-col items-end gap-1 text-right text-[11px] text-white/50">
                   {r.lastAt && timeAgo(r.lastAt)}
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${openId === r.user_id ? "rotate-180" : ""}`} />
                 </div>
               </div>
-            </div>
+              {openId === r.user_id && <IndividualTimeline userId={r.user_id} />}
+            </button>
           ))}
         </div>
       )}
@@ -89,10 +117,16 @@ export default function WellbeingAdmin() {
             Sem sinais de atenção
           </div>
           {rest.map((r) => (
-            <div key={r.user_id} className="glass-chip rounded-2xl p-3 text-[12.5px] text-white/70">
+            <button
+              key={r.user_id}
+              type="button"
+              onClick={() => setOpenId(openId === r.user_id ? null : r.user_id)}
+              className="w-full text-left glass-chip rounded-2xl p-3 text-[12.5px] text-white/70"
+            >
               <span className="font-semibold text-white">{r.name}</span> · média {r.avgMood} ·{" "}
               {r.checkins} check-in{r.checkins === 1 ? "" : "s"}
-            </div>
+              {openId === r.user_id && <IndividualTimeline userId={r.user_id} />}
+            </button>
           ))}
         </div>
       )}

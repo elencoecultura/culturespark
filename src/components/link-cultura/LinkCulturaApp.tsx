@@ -73,6 +73,7 @@ import { BusinessProvider } from "./BusinessContext";
 import BusinessSelector from "./BusinessSelector";
 import { getDailyPhrase, getPillar } from "@/lib/culture-content";
 import { NotificationsBell, BroadcastAdminScreen, NpsResultsScreen } from "./Notifications";
+import WellbeingTimelineScreen from "./WellbeingTimelineScreen";
 import { NpsBanner, HomeNotifications } from "./HomeExtras";
 import CultureOverview from "./CultureOverview";
 import AccountsAdmin from "./AccountsAdmin";
@@ -1773,7 +1774,7 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
 
 /* ---------- Shell ---------- */
 
-type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "kudos-audit" | "iluminari-admin" | "checkins-dashboard" | "culture-overview" | "install-guide" | "accounts-admin" | "nps-results";
+type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "kudos-audit" | "iluminari-admin" | "checkins-dashboard" | "culture-overview" | "install-guide" | "accounts-admin" | "nps-results" | "wellbeing-timeline";
 
 function BottomNav({
   active,
@@ -1892,6 +1893,7 @@ export default function LinkCulturaApp() {
       // que é do escopo do próprio gerente dele).
       if (isAdmin || isGerente || isDirecao) {
         gestao.push({ id: "nps-results", label: "Resultados do NPS", icon: Star, desc: "NPS e evolução da sua casa" });
+        gestao.push({ id: "wellbeing-timeline", label: "Evolução do bem-estar", icon: TrendingUp, desc: "Humor médio ao longo do tempo, por área" });
       }
       if (!isAdmin) gestao.push({ id: "team", label: "Elenco", icon: Users, desc: "Gerenciar pessoas" });
       groups.push({ title: "Gestão", items: gestao });
@@ -1963,6 +1965,7 @@ export default function LinkCulturaApp() {
       case "analytics": return <GamificationAnalyticsAdmin />;
       case "broadcast": return <BroadcastAdminScreen />;
       case "nps-results": return <NpsResultsScreen />;
+      case "wellbeing-timeline": return <WellbeingTimelineScreen />;
       default: return <HomeScreen name={name} go={setTab} isAdmin={isAdmin} isLeader={isLeader} />;
     }
   }, [tab, isLeader, isAdmin, isLoading, profile, name]);
