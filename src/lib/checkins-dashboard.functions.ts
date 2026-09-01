@@ -27,13 +27,27 @@ function distToPct(d: { baixo: number; medio: number; alto: number; total: numbe
   };
 }
 
-// Painel principal de casas: pra cada atração, junta check-in (hoje e nos
-// últimos N dias), humor médio + distribuição de energia, elogios
+// dia = só hoje; mês = mês corrente (dia 1 até hoje); ano = ano corrente
+// (1º de janeiro até hoje). O período escolhido vale pra TODOS os
+// indicadores do painel (antes só mexia na janela do check-in — humor,
+// elogios e alertas ficavam presos em 30 dias fixos, incoerente com o
+// filtro escolhido).
+const PERIODS = ["dia", "mes", "ano"] as const;
+type Period = (typeof PERIODS)[number];
+
+function periodStart(period: Period, now: Date): Date {
+  if (period === "dia") return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (period === "mes") return new Date(now.getFullYear(), now.getMonth(), 1);
+  return new Date(now.getFullYear(), 0, 1);
+}
+
+// Painel principal de casas: pra cada atração, junta check-in (hoje e no
+// período escolhido), humor médio + distribuição de energia, elogios
 // enviados/recebidos, alertas de energia baixa, e a divisão por setor
 // (Cozinha/Salão/etc dentro da mesma casa) — tudo num lugar só.
 export const getCheckinsByHouse = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ days: z.number().int().min(1).max(60).default(14) }).parse(d ?? {}))
+  .inputValidator((d) => z.object({ period: z.enum(PERIODS).default("mes") }).parse(d ?? {}))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -41,15 +55,17 @@ export const getCheckinsByHouse = createServerFn({ method: "GET" })
     const tz = "America/Sao_Paulo";
     const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
 
+    const now = new Date();
+    const start = periodStart(data.period, now);
+    // Matriz interna sempre por dia (pra média/percentuais ficarem exatos);
+    // "ano" só agrupa em mês na hora de montar a série do gráfico.
     const dayKeys: string[] = [];
-    for (let i = data.days - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
+    for (let d = new Date(start); d <= now; d.setDate(d.getDate() + 1)) {
       dayKeys.push(fmt.format(d));
     }
-    const todayKey = dayKeys[dayKeys.length - 1];
-    const sinceIso = new Date(Date.now() - data.days * 86_400_000).toISOString();
-    const since30Iso = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    const todayKey = fmt.format(now);
+    const sinceIso = start.toISOString();
+    const chartKeys = data.period === "ano" ? Array.from(new Set(dayKeys.map((k) => k.slice(0, 7)))) : dayKeys;
 
     const { data: profiles } = await supabaseAdmin
       .from("profiles")
@@ -71,12 +87,12 @@ export const getCheckinsByHouse = createServerFn({ method: "GET" })
     });
     const houses = Object.keys(headcount).sort();
 
-    const [{ data: checkins, error: cErr }, { data: moods30, error: mErr }, { data: kudos30, error: kErr }, { data: lowEnergy30 }] =
+    const [{ data: checkins, error: cErr }, { data: moodsInPeriod, error: mErr }, { data: kudosInPeriod, error: kErr }, { data: lowEnergyInPeriod }] =
       await Promise.all([
         supabaseAdmin.from("mood_checkins").select("user_id, mood, created_at").gte("created_at", sinceIso),
-        supabaseAdmin.from("mood_checkins").select("user_id, mood").gte("created_at", since30Iso),
-        supabaseAdmin.from("kudos").select("from_user, to_user").gte("created_at", since30Iso),
-        supabaseAdmin.from("low_energy_alerts").select("user_id").gte("triggered_at", since30Iso),
+        supabaseAdmin.from("mood_checkins").select("user_id, mood").gte("created_at", sinceIso),
+        supabaseAdmin.from("kudos").select("from_user, to_user").gte("created_at", sinceIso),
+        supabaseAdmin.from("low_energy_alerts").select("user_id").gte("triggered_at", sinceIso),
       ]);
     if (cErr) throw new Error(cErr.message);
     if (mErr) throw new Error(mErr.message);
@@ -105,12 +121,12 @@ export const getCheckinsByHouse = createServerFn({ method: "GET" })
       if (setorMatrix[house][setor]?.[day]) setorMatrix[house][setor][day].add(uid);
     });
 
-    // humor médio + distribuição (30d) por casa, e distribuição geral
+    // humor médio + distribuição no período por casa, e distribuição geral
     const moodSum: Record<string, number> = {};
     const moodCount: Record<string, number> = {};
     const moodDist: Record<string, ReturnType<typeof emptyDist>> = {};
     const moodDistOverall = emptyDist();
-    (moods30 ?? []).forEach((m) => {
+    (moodsInPeriod ?? []).forEach((m) => {
       const house = attractionById.get(m.user_id as string);
       const mood = m.mood as number;
       const bucket = moodBucket(mood);
@@ -124,29 +140,36 @@ export const getCheckinsByHouse = createServerFn({ method: "GET" })
       moodDist[house].total++;
     });
 
-    // elogios enviados/recebidos (30d) por casa
+    // elogios enviados/recebidos no período por casa
     const kudosSent: Record<string, number> = {};
     const kudosReceived: Record<string, number> = {};
-    (kudos30 ?? []).forEach((k) => {
+    (kudosInPeriod ?? []).forEach((k) => {
       const fromHouse = attractionById.get(k.from_user as string);
       const toHouse = attractionById.get(k.to_user as string);
       if (fromHouse) kudosSent[fromHouse] = (kudosSent[fromHouse] ?? 0) + 1;
       if (toHouse) kudosReceived[toHouse] = (kudosReceived[toHouse] ?? 0) + 1;
     });
 
-    // alertas de energia baixa (30d) por casa
+    // alertas de energia baixa no período por casa
     const alerts: Record<string, number> = {};
-    (lowEnergy30 ?? []).forEach((a) => {
+    (lowEnergyInPeriod ?? []).forEach((a) => {
       const house = attractionById.get(a.user_id as string);
       if (house) alerts[house] = (alerts[house] ?? 0) + 1;
     });
 
     const rows = houses.map((house) => {
-      const byDay = dayKeys.map((day) => matrix[house][day].size);
+      const dailyCounts = dayKeys.map((day) => matrix[house][day].size);
+      // Série do gráfico: por dia (dia/mês) ou somada por mês (ano) — mas a
+      // média/percentual sempre usa a granularidade diária real, senão o
+      // "ano" ficaria com base 12 (meses) em vez de ~365 (dias).
+      const byDay =
+        data.period === "ano"
+          ? chartKeys.map((month) => dayKeys.reduce((s, day, i) => (day.startsWith(month) ? s + dailyCounts[i] : s), 0))
+          : dailyCounts;
       const todayCount = matrix[house][todayKey]?.size ?? 0;
-      const windowDays = byDay.length;
+      const windowDays = dayKeys.length;
       const avgRate = headcount[house]
-        ? Math.round((byDay.reduce((s, n) => s + n, 0) / (headcount[house] * windowDays)) * 100)
+        ? Math.round((dailyCounts.reduce((s, n) => s + n, 0) / (headcount[house] * windowDays)) * 100)
         : 0;
 
       const bySetor = Object.keys(setorHeadcount[house] ?? {})
@@ -178,5 +201,5 @@ export const getCheckinsByHouse = createServerFn({ method: "GET" })
       };
     });
 
-    return { days: dayKeys, rows, moodDistOverall: distToPct(moodDistOverall) };
+    return { days: chartKeys, period: data.period, rows, moodDistOverall: distToPct(moodDistOverall) };
   });

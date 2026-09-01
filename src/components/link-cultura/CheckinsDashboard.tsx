@@ -136,7 +136,9 @@ function SetorBreakdown({ bySetor }: { bySetor: HouseRow["bySetor"] }) {
   );
 }
 
-function HouseCard({ row, days }: { row: HouseRow; days: string[] }) {
+const PERIOD_PHRASE: Record<"dia" | "mes" | "ano", string> = { dia: "hoje", mes: "no mês", ano: "no ano" };
+
+function HouseCard({ row, days, period }: { row: HouseRow; days: string[]; period: "dia" | "mes" | "ano" }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="glass-strong rounded-[26px] p-4">
@@ -150,13 +152,13 @@ function HouseCard({ row, days }: { row: HouseRow; days: string[] }) {
             </span>
           </div>
           <p className="mt-0.5 text-[11.5px] text-white/60">
-            {row.todayCount}/{row.headcount} fizeram check-in hoje · média de {row.avgPct}% nos últimos {days.length} dias
+            {row.todayCount}/{row.headcount} fizeram check-in hoje · média de {row.avgPct}% {PERIOD_PHRASE[period]}
           </p>
         </div>
       </div>
 
       <div className="mt-3">
-        <div className="mb-1 text-[10px] uppercase tracking-[0.08em] text-white/50">Energia (30 dias)</div>
+        <div className="mb-1 text-[10px] uppercase tracking-[0.08em] text-white/50">Energia ({PERIOD_PHRASE[period]})</div>
         <MoodDistBar dist={row.moodDist} />
       </div>
 
@@ -185,12 +187,14 @@ function HouseCard({ row, days }: { row: HouseRow; days: string[] }) {
   );
 }
 
+const PERIOD_LABEL: Record<"dia" | "mes" | "ano", string> = { dia: "Dia", mes: "Mês", ano: "Ano" };
+
 export default function CheckinsDashboard() {
-  const [days, setDays] = useState(14);
+  const [period, setPeriod] = useState<"dia" | "mes" | "ano">("mes");
   const fn = useServerFn(getCheckinsByHouse);
   const q = useQuery({
-    queryKey: ["checkins-by-house", days],
-    queryFn: () => fn({ data: { days } }),
+    queryKey: ["checkins-by-house", period],
+    queryFn: () => fn({ data: { period } }),
   });
 
   return (
@@ -206,16 +210,16 @@ export default function CheckinsDashboard() {
       </div>
 
       <div className="flex gap-2 px-1">
-        {[7, 14, 30].map((d) => (
+        {(["dia", "mes", "ano"] as const).map((p) => (
           <button
-            key={d}
+            key={p}
             type="button"
-            onClick={() => setDays(d)}
+            onClick={() => setPeriod(p)}
             className={`rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition ${
-              days === d ? "bg-brand-grad text-white shadow-glow" : "glass-chip text-white/75"
+              period === p ? "bg-brand-grad text-white shadow-glow" : "glass-chip text-white/75"
             }`}
           >
-            {d} dias
+            {PERIOD_LABEL[p]}
           </button>
         ))}
       </div>
@@ -230,7 +234,7 @@ export default function CheckinsDashboard() {
         <>
           <div className="glass-soft rounded-[22px] p-4">
             <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/55">
-              Energia geral do elenco (30 dias)
+              Energia geral do elenco ({PERIOD_PHRASE[period]})
             </div>
             <div className="mt-2">
               <MoodDistBar dist={q.data.moodDistOverall} />
@@ -239,7 +243,7 @@ export default function CheckinsDashboard() {
 
           <div className="grid gap-3">
             {q.data.rows.map((r) => (
-              <HouseCard key={r.house} row={r} days={q.data.days} />
+              <HouseCard key={r.house} row={r} days={q.data.days} period={period} />
             ))}
           </div>
         </>

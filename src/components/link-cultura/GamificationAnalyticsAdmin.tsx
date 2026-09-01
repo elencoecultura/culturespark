@@ -212,6 +212,28 @@ export default function GamificationAnalyticsAdmin() {
           <ListFilter className="h-4 w-4" />
           <h3 className="text-[14px] font-semibold">Filtros</h3>
         </div>
+        <div className="glass-chip flex items-center gap-1 rounded-full p-1 text-[12px] w-fit">
+          {(["dia", "mes", "ano"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => {
+                const now = new Date();
+                const start =
+                  p === "dia"
+                    ? now
+                    : p === "mes"
+                      ? new Date(now.getFullYear(), now.getMonth(), 1)
+                      : new Date(now.getFullYear(), 0, 1);
+                setFrom(start.toISOString().slice(0, 10));
+                setTo(today);
+              }}
+              className="rounded-full px-3 py-1.5 text-white/80 hover:bg-white/10"
+            >
+              {p === "dia" ? "Dia" : p === "mes" ? "Mês" : "Ano"}
+            </button>
+          ))}
+        </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="De" icon={<CalendarRange className="h-4 w-4 text-white/60" />}>
             <input
