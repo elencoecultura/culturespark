@@ -145,19 +145,36 @@ export const submitDiscTest = createServerFn({ method: "POST" })
     };
   });
 
-// Admin: resultados de quem consentiu compartilhar + distribuição do time.
+// Gerente/direção/admin: resultados de quem consentiu compartilhar +
+// distribuição do time. Mesmo escopo do NPS — gerente/direção só vê a
+// própria casa, admin (ou attraction/negocio="TODOS") vê tudo. Líder comum
+// fica de fora (mesma razão do NPS: reporta pro gerente, não vê o escopo
+// que é dele).
 export const listTeamDiscResults = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data: isAdmin } = await context.supabase.rpc("has_role", {
-      _user_id: context.userId,
-      _role: "admin",
-    });
-    if (!isAdmin) throw new Error("Forbidden");
+    const checks = await Promise.all(
+      (["admin", "gerente", "direcao"] as const).map((role) =>
+        context.supabase.rpc("has_role", { _user_id: context.userId, _role: role }),
+      ),
+    );
+    if (!checks.some((c: any) => c.data)) throw new Error("Forbidden");
+    const [isAdmin] = checks.map((c: any) => c.data);
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: myProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("attraction, negocio")
+      .eq("id", context.userId)
+      .maybeSingle();
+    const hasTodosScope = myProfile?.attraction === "TODOS" || myProfile?.negocio === "TODOS";
+    const seesAll = isAdmin || hasTodosScope;
 
     const res = await context.supabase
       .from("behavioral_tests")
-      .select("user_id, taken_at, primary_essence, secondary_essence, combination, profile_type")
+      .select(
+        "user_id, taken_at, score_d, score_i, score_s, score_c, primary_essence, secondary_essence, combination, profile_type",
+      )
       .eq("share_with_leadership", true)
       .order("taken_at", { ascending: false });
     if (res.error) throw new Error(res.error.message);
@@ -165,14 +182,11 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
     // Mantém apenas o resultado mais recente de cada pessoa.
     const latest = new Map<string, NonNullable<typeof res.data>[number]>();
     for (const r of res.data ?? []) if (!latest.has(r.user_id)) latest.set(r.user_id, r);
-    const base = Array.from(latest.values());
+    const allBase = Array.from(latest.values());
 
-    const ids = base.map((r) => r.user_id);
-    const { data: profs } = ids.length
-      ? await context.supabase
-          .from("profiles")
-          .select("id, full_name, attraction, negocio")
-          .in("id", ids)
+    const allIds = allBase.map((r) => r.user_id);
+    const { data: profs } = allIds.length
+      ? await supabaseAdmin.from("profiles").select("id, full_name, attraction, negocio").in("id", allIds)
       : {
           data: [] as Array<{
             id: string;
@@ -183,11 +197,19 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
         };
     const profById = new Map((profs ?? []).map((p) => [p.id, p]));
 
+    // gerente/direção só vê a própria casa (attraction/negocio) — admin/TODOS vê tudo.
+    const base = seesAll
+      ? allBase
+      : allBase.filter((r) => {
+          const p = profById.get(r.user_id);
+          return (p?.attraction ?? p?.negocio) === myProfile?.attraction;
+        });
+
     const distribution: Record<Essence, number> = { D: 0, I: 0, S: 0, C: 0 };
     let versatile = 0;
     const byAttraction = new Map<
       string,
-      { distribution: Record<Essence, number>; total: number }
+      { distribution: Record<Essence, number>; scoreSum: Record<Essence, number>; total: number }
     >();
     const rows = base
       .map((r) => {
@@ -196,13 +218,21 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
         if (r.profile_type === "versatil") versatile += 1;
         const p = profById.get(r.user_id);
         const attraction = p?.attraction ?? p?.negocio ?? null;
+        const scores: Record<Essence, number> = {
+          D: r.score_d as number,
+          I: r.score_i as number,
+          S: r.score_s as number,
+          C: r.score_c as number,
+        };
 
         const key = attraction ?? "Sem casa definida";
         const bucket = byAttraction.get(key) ?? {
           distribution: { D: 0, I: 0, S: 0, C: 0 },
+          scoreSum: { D: 0, I: 0, S: 0, C: 0 },
           total: 0,
         };
         bucket.distribution[primary] += 1;
+        (["D", "I", "S", "C"] as Essence[]).forEach((k) => (bucket.scoreSum[k] += scores[k]));
         bucket.total += 1;
         byAttraction.set(key, bucket);
 
@@ -210,6 +240,7 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
           user_id: r.user_id,
           name: p?.full_name ?? "Elenco",
           attraction,
+          scores,
           primary,
           secondary: r.secondary_essence as Essence | null,
           combination: r.combination,
@@ -230,9 +261,14 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
         const predominant = (["D", "I", "S", "C"] as Essence[]).sort(
           (a, b) => bucket.distribution[b] - bucket.distribution[a],
         )[0];
+        const avgScore: Record<Essence, number> = { D: 0, I: 0, S: 0, C: 0 };
+        (["D", "I", "S", "C"] as Essence[]).forEach(
+          (k) => (avgScore[k] = bucket.total ? Math.round((bucket.scoreSum[k] / bucket.total) * 10) / 10 : 0),
+        );
         return {
           attraction,
           distribution: bucket.distribution,
+          avgScore,
           total: bucket.total,
           predominant,
           predominantLabel: ESSENCE_LABEL[predominant],
@@ -240,5 +276,5 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
       })
       .sort((a, b) => b.total - a.total);
 
-    return { rows, distribution, total: rows.length, versatile, byAttraction: byAttractionList };
+    return { rows, distribution, total: rows.length, versatile, byAttraction: byAttractionList, seesAll };
   });

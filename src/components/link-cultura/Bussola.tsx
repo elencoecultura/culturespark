@@ -621,6 +621,27 @@ function ResultList({
 
 /* ---------------- Admin: Bússola do time ---------------- */
 
+function MiniScoreBars({ scores }: { scores: Record<Essence, number> }) {
+  const max = Math.max(1, ...ORDER.map((e) => scores[e]));
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+      {ORDER.map((e) => {
+        const c = ESSENCE_COLOR[e];
+        const v = scores[e];
+        return (
+          <div key={e} className="flex items-center gap-1">
+            <span className={cn("text-[9px] font-black", c.text)}>{e}</span>
+            <div className="h-1.5 w-8 overflow-hidden rounded-full bg-white/10">
+              <div className={cn("h-full rounded-full", c.bar)} style={{ width: `${(v / max) * 100}%` }} />
+            </div>
+            <span className="text-[9.5px] text-white/50">{v}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function BussolaAdmin() {
   const fn = useServerFn(listTeamDiscResults);
   const { data, isLoading } = useQuery({ queryKey: ["disc-team"], queryFn: () => fn() });
@@ -638,7 +659,8 @@ export function BussolaAdmin() {
           Mapa comportamental
         </h1>
         <p className="text-[12.5px] text-white/65">
-          Resultados de quem autorizou compartilhar com a liderança.
+          Resultados de quem autorizou compartilhar com a liderança
+          {data && !data.seesAll ? " · mostrando só a sua casa" : ""}.
         </p>
       </div>
 
@@ -714,6 +736,7 @@ export function BussolaAdmin() {
                           {b.predominantLabel} predominante · {b.total} pessoa
                           {b.total === 1 ? "" : "s"}
                         </div>
+                        <MiniScoreBars scores={b.avgScore} />
                       </div>
                     </div>
                   );
@@ -745,6 +768,7 @@ export function BussolaAdmin() {
                       {r.combination ? ` · ${r.combination}` : ""}
                       {r.attraction ? ` · ${r.attraction}` : ""}
                     </div>
+                    <MiniScoreBars scores={r.scores} />
                   </div>
                   <span className="shrink-0 text-[11px] text-white/45">
                     {new Date(r.taken_at).toLocaleDateString("pt-BR")}

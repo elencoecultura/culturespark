@@ -1894,6 +1894,7 @@ export default function LinkCulturaApp() {
       if (isAdmin || isGerente || isDirecao) {
         gestao.push({ id: "nps-results", label: "Resultados do NPS", icon: Star, desc: "NPS e evolução da sua casa" });
         gestao.push({ id: "wellbeing-timeline", label: "Evolução do bem-estar", icon: TrendingUp, desc: "Humor médio ao longo do tempo, por área" });
+        gestao.push({ id: "disc-admin", label: "Bússola do time", icon: Compass, desc: "Perfis comportamentais (quem consentiu)" });
       }
       if (!isAdmin) gestao.push({ id: "team", label: "Elenco", icon: Users, desc: "Gerenciar pessoas" });
       groups.push({ title: "Gestão", items: gestao });
@@ -1908,7 +1909,6 @@ export default function LinkCulturaApp() {
         { id: "kudos-audit", label: "Revisar elogios", icon: ShieldAlert, desc: "Ver todos os elogios — investigar bullying/assédio" },
         { id: "iluminari-admin", label: "Momentos Iluminari", icon: Sun, desc: "Ver todos os momentos compartilhados" },
         { id: "checkins-dashboard", label: "Check-ins por casa", icon: Gauge, desc: "Quantos check-ins por dia, casa a casa" },
-        { id: "disc-admin", label: "Bússola do time", icon: Compass, desc: "Perfis comportamentais (quem consentiu)" },
         { id: "hierarquia", label: "Elenco & Hierarquia", icon: Users, desc: "Definir líder e co-líder de cada pessoa" },
         { id: "pre-reg", label: "Pré-cadastro", icon: UserPlus, desc: "Importar planilha do elenco" },
         { id: "cycle", label: "Ciclo da gamificação", icon: Trophy, desc: "Resetar pontos a cada N dias" },
