@@ -1837,7 +1837,7 @@ function BottomNav({
 export default function LinkCulturaApp() {
   const [tab, setTab] = useState<TabId>("home");
   const navigate = useNavigate();
-  const { profile, isLeader, isAdmin, isLoading, canSelectBusiness } = useCurrentUser();
+  const { profile, isLeader, isAdmin, isGerente, isDirecao, isLoading, canSelectBusiness } = useCurrentUser();
 
   const handleTabChange = (id: TabId) => {
     if (id === "evals") {
@@ -1886,8 +1886,13 @@ export default function LinkCulturaApp() {
         { id: "points", label: "Gamificação", icon: Trophy, desc: "Ranking e conquistas" },
         { id: "analytics", label: "Performance da gamificação", icon: BarChart3, desc: "Consultas e snapshots por período" },
         { id: "vagas", label: "Vagas", icon: Briefcase, desc: "Briefings e recrutamento" },
-        { id: "nps-results", label: "Resultados do NPS", icon: Star, desc: "NPS e evolução do seu time" },
       ];
+      // Resultado de NPS pode ter comentário livre da pessoa — só gerente/
+      // direção/admin vê (líder comum reporta pro gerente, não pode ver o
+      // que é do escopo do próprio gerente dele).
+      if (isAdmin || isGerente || isDirecao) {
+        gestao.push({ id: "nps-results", label: "Resultados do NPS", icon: Star, desc: "NPS e evolução da sua casa" });
+      }
       if (!isAdmin) gestao.push({ id: "team", label: "Elenco", icon: Users, desc: "Gerenciar pessoas" });
       groups.push({ title: "Gestão", items: gestao });
     }
@@ -1920,7 +1925,7 @@ export default function LinkCulturaApp() {
     }
 
     return groups;
-  }, [isLeader, isAdmin, profile]);
+  }, [isLeader, isAdmin, isGerente, isDirecao, profile]);
 
   const moreTabs = useMemo(() => moreGroups.flatMap((g) => g.items), [moreGroups]);
 

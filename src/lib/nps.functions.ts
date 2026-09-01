@@ -7,16 +7,19 @@ async function isAdmin(supabase: any, userId: string) {
   return !!data;
 }
 
-// Mesmo escopo usado no resto do app (listUsers/listTodayCheckins): líder
-// comum só vê quem reporta direto pra ele, gerente/direção vê a atração
-// inteira, admin (ou attraction/negocio="TODOS") vê tudo. Retorna `null`
-// quando o escopo é "vê tudo" — quem chama trata isso como "sem filtro".
-const LEADERSHIP_ROLES = ["admin", "lider", "leader", "gerente", "direcao"] as const;
+// Resultado de NPS é sensível (pode conter comentário livre da pessoa) e o
+// pedido original só citava gerente/direção/admin como público — líder comum
+// FICA DE FORA aqui (mesmo sendo "isLeader" pro resto do app), porque um
+// líder normalmente reporta pra um gerente e não pode ver os dados que são do
+// escopo do próprio gerente dele. Gerente/direção vê a atração inteira, admin
+// (ou attraction/negocio="TODOS") vê tudo. Retorna `null` quando o escopo é
+// "vê tudo" — quem chama trata isso como "sem filtro".
+const NPS_VISIBLE_ROLES = ["admin", "gerente", "direcao"] as const;
 async function scopedRespondentIds(supabase: any, userId: string): Promise<string[] | null> {
   const checks = await Promise.all(
-    LEADERSHIP_ROLES.map((role) => supabase.rpc("has_role", { _user_id: userId, _role: role })),
+    NPS_VISIBLE_ROLES.map((role) => supabase.rpc("has_role", { _user_id: userId, _role: role })),
   );
-  const [isAdminRole, , , isGerente, isDirecao] = checks.map((c: any) => c.data);
+  const [isAdminRole, isGerente, isDirecao] = checks.map((c: any) => c.data);
   if (!checks.some((c: any) => c.data)) throw new Error("Forbidden");
 
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -28,11 +31,11 @@ async function scopedRespondentIds(supabase: any, userId: string): Promise<strin
   const hasTodosScope = myProfile?.attraction === "TODOS" || myProfile?.negocio === "TODOS";
   if (isAdminRole || hasTodosScope) return null;
 
-  let q = supabaseAdmin.from("profiles").select("id");
-  q = isGerente || isDirecao
-    ? q.eq("attraction", myProfile?.attraction ?? "__none__")
-    : q.or(`manager_id.eq.${userId},co_leader_id.eq.${userId}`);
-  const { data: profiles } = await q;
+  // gerente/direção: a atração/casa inteira (inclui a si mesmo, se responder)
+  const { data: profiles } = await supabaseAdmin
+    .from("profiles")
+    .select("id")
+    .eq("attraction", myProfile?.attraction ?? "__none__");
   return (profiles ?? []).map((p: { id: string }) => p.id);
 }
 
