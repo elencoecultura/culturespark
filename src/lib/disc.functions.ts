@@ -186,13 +186,14 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
 
     const allIds = allBase.map((r) => r.user_id);
     const { data: profs } = allIds.length
-      ? await supabaseAdmin.from("profiles").select("id, full_name, attraction, negocio").in("id", allIds)
+      ? await supabaseAdmin.from("profiles").select("id, full_name, attraction, negocio, setor").in("id", allIds)
       : {
           data: [] as Array<{
             id: string;
             full_name: string;
             attraction: string | null;
             negocio: string | null;
+            setor: string | null;
           }>,
         };
     const profById = new Map((profs ?? []).map((p) => [p.id, p]));
@@ -205,12 +206,10 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
           return (p?.attraction ?? p?.negocio) === myProfile?.attraction;
         });
 
+    type GroupBucket = { distribution: Record<Essence, number>; scoreSum: Record<Essence, number>; total: number };
     const distribution: Record<Essence, number> = { D: 0, I: 0, S: 0, C: 0 };
     let versatile = 0;
-    const byAttraction = new Map<
-      string,
-      { distribution: Record<Essence, number>; scoreSum: Record<Essence, number>; total: number }
-    >();
+
     const rows = base
       .map((r) => {
         const primary = r.primary_essence as Essence;
@@ -218,6 +217,7 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
         if (r.profile_type === "versatil") versatile += 1;
         const p = profById.get(r.user_id);
         const attraction = p?.attraction ?? p?.negocio ?? null;
+        const setor = p?.setor ?? null;
         const scores: Record<Essence, number> = {
           D: r.score_d as number,
           I: r.score_i as number,
@@ -225,21 +225,11 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
           C: r.score_c as number,
         };
 
-        const key = attraction ?? "Sem casa definida";
-        const bucket = byAttraction.get(key) ?? {
-          distribution: { D: 0, I: 0, S: 0, C: 0 },
-          scoreSum: { D: 0, I: 0, S: 0, C: 0 },
-          total: 0,
-        };
-        bucket.distribution[primary] += 1;
-        (["D", "I", "S", "C"] as Essence[]).forEach((k) => (bucket.scoreSum[k] += scores[k]));
-        bucket.total += 1;
-        byAttraction.set(key, bucket);
-
         return {
           user_id: r.user_id,
           name: p?.full_name ?? "Elenco",
           attraction,
+          setor,
           scores,
           primary,
           secondary: r.secondary_essence as Essence | null,
@@ -256,25 +246,60 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
       S: "Estabilidade",
       C: "Conformidade",
     };
-    const byAttractionList = Array.from(byAttraction.entries())
-      .map(([attraction, bucket]) => {
-        const predominant = (["D", "I", "S", "C"] as Essence[]).sort(
-          (a, b) => bucket.distribution[b] - bucket.distribution[a],
-        )[0];
-        const avgScore: Record<Essence, number> = { D: 0, I: 0, S: 0, C: 0 };
-        (["D", "I", "S", "C"] as Essence[]).forEach(
-          (k) => (avgScore[k] = bucket.total ? Math.round((bucket.scoreSum[k] / bucket.total) * 10) / 10 : 0),
-        );
-        return {
-          attraction,
-          distribution: bucket.distribution,
-          avgScore,
-          total: bucket.total,
-          predominant,
-          predominantLabel: ESSENCE_LABEL[predominant],
-        };
-      })
-      .sort((a, b) => b.total - a.total);
 
-    return { rows, distribution, total: rows.length, versatile, byAttraction: byAttractionList, seesAll };
+    // Agrupa os resultados por uma chave qualquer (casa ou setor) — usado
+    // tanto pra "por casa" quanto pra "por setor" (Cozinha/Salão/etc), que é
+    // o corte que faz sentido dentro de uma casa só (ou cruzando casas, pra
+    // quem vê tudo — ex: "Cozinha" da Pizzaria + "Cozinha" da Era do Fogo
+    // juntas, já que a pergunta normalmente é sobre a função, não a casa).
+    function groupBy(keyFor: (row: (typeof rows)[number]) => string | null, fallback: string) {
+      const groups = new Map<string, GroupBucket>();
+      for (const r of rows) {
+        const key = keyFor(r) ?? fallback;
+        const bucket = groups.get(key) ?? {
+          distribution: { D: 0, I: 0, S: 0, C: 0 },
+          scoreSum: { D: 0, I: 0, S: 0, C: 0 },
+          total: 0,
+        };
+        bucket.distribution[r.primary] += 1;
+        (["D", "I", "S", "C"] as Essence[]).forEach((k) => (bucket.scoreSum[k] += r.scores[k]));
+        bucket.total += 1;
+        groups.set(key, bucket);
+      }
+      return Array.from(groups.entries())
+        .map(([label, bucket]) => {
+          const predominant = (["D", "I", "S", "C"] as Essence[]).sort(
+            (a, b) => bucket.distribution[b] - bucket.distribution[a],
+          )[0];
+          const avgScore: Record<Essence, number> = { D: 0, I: 0, S: 0, C: 0 };
+          (["D", "I", "S", "C"] as Essence[]).forEach(
+            (k) => (avgScore[k] = bucket.total ? Math.round((bucket.scoreSum[k] / bucket.total) * 10) / 10 : 0),
+          );
+          return {
+            label,
+            distribution: bucket.distribution,
+            avgScore,
+            total: bucket.total,
+            predominant,
+            predominantLabel: ESSENCE_LABEL[predominant],
+          };
+        })
+        .sort((a, b) => b.total - a.total);
+    }
+
+    const byAttractionList = groupBy((r) => r.attraction, "Sem casa definida").map((g) => ({
+      ...g,
+      attraction: g.label,
+    }));
+    const bySetorList = groupBy((r) => r.setor, "Sem setor definido").map((g) => ({ ...g, setor: g.label }));
+
+    return {
+      rows,
+      distribution,
+      total: rows.length,
+      versatile,
+      byAttraction: byAttractionList,
+      bySetor: bySetorList,
+      seesAll,
+    };
   });
