@@ -5,6 +5,7 @@ import LiquidBackground from "@/components/link-cultura/LiquidBackground";
 import hectorLogo from "@/assets/hector-logo.png";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { enforceWifiLock } from "@/lib/wifi.functions";
 
 export const Route = createFileRoute("/redefinir-senha")({
   head: () => ({
@@ -57,11 +58,31 @@ function RedefinirSenhaPage() {
     }
     setLoading(true);
     const { error } = await supabase.auth.updateUser({ password: pass });
-    setLoading(false);
     if (error) {
+      setLoading(false);
       toast.error("Não rolou definir a senha", { description: error.message });
       return;
     }
+
+    // Mesma trava de Wi-Fi do login normal — sem isso, redefinir senha era
+    // um jeito de entrar sem passar pela checagem de rede.
+    try {
+      const check = await enforceWifiLock();
+      if (!check.allowed) {
+        await supabase.auth.signOut();
+        setLoading(false);
+        toast.error("Rede não autorizada", {
+          description: `Sua senha foi salva, mas este Wi-Fi (${check.ip || "IP desconhecido"}) não está liberado. Conecte-se ao Wi-Fi do parque e entre de novo.`,
+        });
+        navigate({ to: "/login" });
+        return;
+      }
+    } catch (err) {
+      // Em caso de falha do check, não trava o usuário — log silencioso
+      console.warn("wifi check failed", err);
+    }
+
+    setLoading(false);
     toast.success("Senha definida!");
     navigate({ to: "/app" });
   }
