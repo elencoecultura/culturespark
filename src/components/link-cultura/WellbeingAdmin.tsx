@@ -4,7 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, HeartCrack, Loader2, ShieldAlert } from "lucide-react";
 import { getMoodConcerns } from "@/lib/wellbeing.functions";
 import { getWellbeingTimeline } from "@/lib/wellbeing-timeline.functions";
-import { LineChartSvg } from "./WellbeingTimelineScreen";
+import { TrendCard } from "./WellbeingTimelineScreen";
+
+const INDIVIDUAL_COLOR = "#3987e5";
 
 function timeAgo(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -25,8 +27,8 @@ function IndividualTimeline({ userId }: { userId: string }) {
     return <div className="py-3 text-center text-[12px] text-white/50">Sem histórico de humor este mês.</div>;
   }
   return (
-    <div className="mt-2">
-      <LineChartSvg buckets={q.data.buckets} series={q.data.series} />
+    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+      <TrendCard label="Humor no mês" color={INDIVIDUAL_COLOR} buckets={q.data.buckets} values={q.data.series[0]?.values ?? []} />
     </div>
   );
 }
@@ -76,11 +78,13 @@ export default function WellbeingAdmin() {
             Atenção
           </div>
           {concerning.map((r) => (
-            <button
+            <div
               key={r.user_id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => setOpenId(openId === r.user_id ? null : r.user_id)}
-              className="w-full text-left glass-chip rounded-2xl border border-magic-amber/40 p-4"
+              onKeyDown={(e) => e.key === "Enter" && setOpenId(openId === r.user_id ? null : r.user_id)}
+              className="w-full cursor-pointer text-left glass-chip rounded-2xl border border-magic-amber/40 p-4"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -106,7 +110,7 @@ export default function WellbeingAdmin() {
                 </div>
               </div>
               {openId === r.user_id && <IndividualTimeline userId={r.user_id} />}
-            </button>
+            </div>
           ))}
         </div>
       )}
@@ -117,16 +121,18 @@ export default function WellbeingAdmin() {
             Sem sinais de atenção
           </div>
           {rest.map((r) => (
-            <button
+            <div
               key={r.user_id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => setOpenId(openId === r.user_id ? null : r.user_id)}
-              className="w-full text-left glass-chip rounded-2xl p-3 text-[12.5px] text-white/70"
+              onKeyDown={(e) => e.key === "Enter" && setOpenId(openId === r.user_id ? null : r.user_id)}
+              className="w-full cursor-pointer text-left glass-chip rounded-2xl p-3 text-[12.5px] text-white/70"
             >
               <span className="font-semibold text-white">{r.name}</span> · média {r.avgMood} ·{" "}
               {r.checkins} check-in{r.checkins === 1 ? "" : "s"}
               {openId === r.user_id && <IndividualTimeline userId={r.user_id} />}
-            </button>
+            </div>
           ))}
         </div>
       )}
