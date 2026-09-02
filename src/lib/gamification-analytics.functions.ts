@@ -265,7 +265,12 @@ export const getGamificationAnalytics = createServerFn({ method: "POST" })
         }
       }
     } else {
-      let q = context.supabase.from("point_events").select("user_id, points, kind, created_at");
+      // RLS de point_events só libera ver os próprios eventos (fora admin) —
+      // aqui o escopo já é aplicado em JS logo abaixo (`allowed`), então
+      // usa o client de service role pra não perder os eventos de quem não
+      // é o próprio caller.
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      let q = supabaseAdmin.from("point_events").select("user_id, points, kind, created_at");
       if (data.from) q = q.gte("created_at", data.from);
       if (data.to) q = q.lt("created_at", data.to);
       if (data.kind) q = q.eq("kind", data.kind);

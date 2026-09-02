@@ -178,7 +178,13 @@ export const getAttractionLeaderboard = createServerFn({ method: "POST" })
     const ids = (profiles ?? []).map((p) => p.id);
     if (ids.length === 0) return { attraction, season, rows: [] };
 
-    let evQuery = context.supabase
+    // RLS de point_events só libera ver os próprios eventos (fora
+    // admin/líder de verdade) — pro ranking precisa ver o ponto de todo
+    // mundo da atração, então usa o client de service role aqui. Sem isso,
+    // cada pessoa via só os PRÓPRIOS pontos e todo mundo se achava em
+    // 1º lugar (todos os outros apareciam zerados pra ela).
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    let evQuery = supabaseAdmin
       .from("point_events")
       .select("user_id, points")
       .in("user_id", ids);
