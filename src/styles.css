@@ -99,6 +99,11 @@
     background: var(--aurora-bg);
     background-attachment: fixed;
     -webkit-font-smoothing: antialiased;
+    /* Trava de segurança: nenhum bloco individual deve gerar rolagem
+       horizontal na página — se algum conteúdo (cartão, gráfico, linha
+       flex) ficar largo demais, ele é cortado aqui em vez de vazar pra
+       fora da tela em telas estreitas. */
+    overflow-x: hidden;
   }
   button,
   input,

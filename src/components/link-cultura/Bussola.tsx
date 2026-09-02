@@ -606,17 +606,17 @@ function ResultList({
 function MiniScoreBars({ scores }: { scores: Record<Essence, number> }) {
   const max = Math.max(1, ...ORDER.map((e) => scores[e]));
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+    <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 min-[380px]:grid-cols-4">
       {ORDER.map((e) => {
         const c = ESSENCE_COLOR[e];
         const v = scores[e];
         return (
-          <div key={e} className="flex items-center gap-1">
-            <span className={cn("text-[9px] font-black", c.text)}>{e}</span>
-            <div className="h-1.5 w-8 overflow-hidden rounded-full bg-white/10">
+          <div key={e} className="flex min-w-0 items-center gap-1">
+            <span className={cn("shrink-0 text-[9px] font-black", c.text)}>{e}</span>
+            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10">
               <div className={cn("h-full rounded-full", c.bar)} style={{ width: `${(v / max) * 100}%` }} />
             </div>
-            <span className="text-[9.5px] text-white/50">{v}</span>
+            <span className="shrink-0 text-[9.5px] text-white/50">{v}</span>
           </div>
         );
       })}
@@ -769,31 +769,35 @@ export function BussolaAdmin() {
             {rows.map((r) => {
               const c = ESSENCE_COLOR[r.primary as Essence];
               return (
-                <Card key={r.user_id} className="flex items-center gap-3 p-4">
-                  <span
-                    className={cn(
-                      "grid h-11 w-11 shrink-0 place-items-center rounded-full font-display text-[14px] font-black text-white",
-                      c.bar,
-                    )}
-                  >
-                    {r.primary}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-display text-[15px] font-black tracking-[-0.02em]">
-                      {r.name}
+                <Card key={r.user_id} className="p-4">
+                  <div className="flex items-start gap-3">
+                    <span
+                      className={cn(
+                        "grid h-11 w-11 shrink-0 place-items-center rounded-full font-display text-[14px] font-black text-white",
+                        c.bar,
+                      )}
+                    >
+                      {r.primary}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="truncate font-display text-[15px] font-black tracking-[-0.02em]">
+                          {r.name}
+                        </div>
+                        <span className="shrink-0 text-[11px] text-white/45">
+                          {new Date(r.taken_at).toLocaleDateString("pt-BR")}
+                        </span>
+                      </div>
+                      <div className="truncate text-[11.5px] text-white/65">
+                        {ESSENCES[r.primary as Essence].name}
+                        {r.secondary ? ` + ${ESSENCES[r.secondary as Essence].name}` : ""}
+                        {r.combination ? ` · ${r.combination}` : ""}
+                        {r.attraction ? ` · ${r.attraction}` : ""}
+                        {r.setor ? ` · ${r.setor}` : ""}
+                      </div>
                     </div>
-                    <div className="truncate text-[11.5px] text-white/65">
-                      {ESSENCES[r.primary as Essence].name}
-                      {r.secondary ? ` + ${ESSENCES[r.secondary as Essence].name}` : ""}
-                      {r.combination ? ` · ${r.combination}` : ""}
-                      {r.attraction ? ` · ${r.attraction}` : ""}
-                      {r.setor ? ` · ${r.setor}` : ""}
-                    </div>
-                    <MiniScoreBars scores={r.scores} />
                   </div>
-                  <span className="shrink-0 text-[11px] text-white/45">
-                    {new Date(r.taken_at).toLocaleDateString("pt-BR")}
-                  </span>
+                  <MiniScoreBars scores={r.scores} />
                 </Card>
               );
             })}
