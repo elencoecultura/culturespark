@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { PERIODS, resolveDateBuckets, todayKey } from "@/lib/date-buckets";
 
 async function assertAdmin(supabase: any, userId: string) {
   const { data } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
@@ -27,42 +28,24 @@ function distToPct(d: { baixo: number; medio: number; alto: number; total: numbe
   };
 }
 
-// dia = só hoje; mês = mês corrente (dia 1 até hoje); ano = ano corrente
-// (1º de janeiro até hoje). O período escolhido vale pra TODOS os
-// indicadores do painel (antes só mexia na janela do check-in — humor,
-// elogios e alertas ficavam presos em 30 dias fixos, incoerente com o
-// filtro escolhido).
-const PERIODS = ["dia", "mes", "ano"] as const;
-type Period = (typeof PERIODS)[number];
-
-// Servidor roda em UTC (Vercel) — se o "hoje"/início do período fosse
-// calculado com Date.getFullYear/getMonth/getDate (hora local do processo,
-// ou seja, UTC) e as chaves dos baldes formatadas em America/Sao_Paulo (3h
-// atrás de UTC), o balde de "hoje" nunca batia com o dia real em São Paulo
-// e boa parte do check-in do dia sumia do painel. Por isso todo o cálculo
-// de datas aqui é feito em cima de chaves "YYYY-MM-DD" já no fuso de SP,
-// nunca misturando com Date local do processo.
-function addDaysToKey(key: string, n: number): string {
-  const [y, m, d] = key.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() + n);
-  return dt.toISOString().slice(0, 10);
-}
-
-function periodStartKey(period: Period, todayKey: string): string {
-  const [y, m] = todayKey.split("-");
-  if (period === "dia") return todayKey;
-  if (period === "mes") return `${y}-${m}-01`;
-  return `${y}-01-01`;
-}
-
-// Painel principal de casas: pra cada atração, junta check-in (hoje e no
-// período escolhido), humor médio + distribuição de energia, elogios
-// enviados/recebidos, alertas de energia baixa, e a divisão por setor
-// (Cozinha/Salão/etc dentro da mesma casa) — tudo num lugar só.
+// Painel principal de casas: pra cada atração, junta check-in (no fim do
+// período e no período inteiro), humor médio + distribuição de energia,
+// elogios enviados/recebidos, alertas de energia baixa, e a divisão por
+// setor (Cozinha/Salão/etc dentro da mesma casa) — tudo num lugar só.
+// Período: um preset (dia/mês/ano, sempre até hoje) ou uma janela
+// personalizada (from/to, "YYYY-MM-DD") — quando os dois vêm preenchidos,
+// a janela personalizada tem prioridade sobre o preset.
 export const getCheckinsByHouse = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ period: z.enum(PERIODS).default("mes") }).parse(d ?? {}))
+  .inputValidator((d) =>
+    z
+      .object({
+        period: z.enum(PERIODS).default("mes"),
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      })
+      .parse(d ?? {}),
+  )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -70,16 +53,7 @@ export const getCheckinsByHouse = createServerFn({ method: "GET" })
     const tz = "America/Sao_Paulo";
     const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
 
-    const todayKey = fmt.format(new Date());
-    const startKey = periodStartKey(data.period, todayKey);
-    // Matriz interna sempre por dia (pra média/percentuais ficarem exatos);
-    // "ano" só agrupa em mês na hora de montar a série do gráfico.
-    const dayKeys: string[] = [];
-    for (let k = startKey; k <= todayKey; k = addDaysToKey(k, 1)) {
-      dayKeys.push(k);
-    }
-    const sinceIso = `${startKey}T00:00:00-03:00`;
-    const chartKeys = data.period === "ano" ? Array.from(new Set(dayKeys.map((k) => k.slice(0, 7)))) : dayKeys;
+    const { dayKeys, bucketKeys: chartKeys, sinceIso, untilIso, endKey: lastDayKey, groupByMonth } = resolveDateBuckets(data);
 
     const { data: profiles } = await supabaseAdmin
       .from("profiles")
@@ -103,10 +77,10 @@ export const getCheckinsByHouse = createServerFn({ method: "GET" })
 
     const [{ data: checkins, error: cErr }, { data: moodsInPeriod, error: mErr }, { data: kudosInPeriod, error: kErr }, { data: lowEnergyInPeriod }] =
       await Promise.all([
-        supabaseAdmin.from("mood_checkins").select("user_id, mood, created_at").gte("created_at", sinceIso),
-        supabaseAdmin.from("mood_checkins").select("user_id, mood").gte("created_at", sinceIso),
-        supabaseAdmin.from("kudos").select("from_user, to_user").gte("created_at", sinceIso),
-        supabaseAdmin.from("low_energy_alerts").select("user_id").gte("triggered_at", sinceIso),
+        supabaseAdmin.from("mood_checkins").select("user_id, mood, created_at").gte("created_at", sinceIso).lt("created_at", untilIso),
+        supabaseAdmin.from("mood_checkins").select("user_id, mood").gte("created_at", sinceIso).lt("created_at", untilIso),
+        supabaseAdmin.from("kudos").select("from_user, to_user").gte("created_at", sinceIso).lt("created_at", untilIso),
+        supabaseAdmin.from("low_energy_alerts").select("user_id").gte("triggered_at", sinceIso).lt("triggered_at", untilIso),
       ]);
     if (cErr) throw new Error(cErr.message);
     if (mErr) throw new Error(mErr.message);
@@ -176,11 +150,10 @@ export const getCheckinsByHouse = createServerFn({ method: "GET" })
       // Série do gráfico: por dia (dia/mês) ou somada por mês (ano) — mas a
       // média/percentual sempre usa a granularidade diária real, senão o
       // "ano" ficaria com base 12 (meses) em vez de ~365 (dias).
-      const byDay =
-        data.period === "ano"
-          ? chartKeys.map((month) => dayKeys.reduce((s, day, i) => (day.startsWith(month) ? s + dailyCounts[i] : s), 0))
-          : dailyCounts;
-      const todayCount = matrix[house][todayKey]?.size ?? 0;
+      const byDay = groupByMonth
+        ? chartKeys.map((month) => dayKeys.reduce((s, day, i) => (day.startsWith(month) ? s + dailyCounts[i] : s), 0))
+        : dailyCounts;
+      const todayCount = matrix[house][lastDayKey]?.size ?? 0;
       const windowDays = dayKeys.length;
       const avgRate = headcount[house]
         ? Math.round((dailyCounts.reduce((s, n) => s + n, 0) / (headcount[house] * windowDays)) * 100)
@@ -190,7 +163,7 @@ export const getCheckinsByHouse = createServerFn({ method: "GET" })
         .sort()
         .map((setor) => {
           const sHeadcount = setorHeadcount[house][setor];
-          const sTodayCount = setorMatrix[house][setor]?.[todayKey]?.size ?? 0;
+          const sTodayCount = setorMatrix[house][setor]?.[lastDayKey]?.size ?? 0;
           return {
             setor,
             headcount: sHeadcount,
@@ -215,5 +188,13 @@ export const getCheckinsByHouse = createServerFn({ method: "GET" })
       };
     });
 
-    return { days: chartKeys, period: data.period, rows, moodDistOverall: distToPct(moodDistOverall) };
+    return {
+      days: chartKeys,
+      period: data.period,
+      from: dayKeys[0] ?? null,
+      to: lastDayKey,
+      isToday: lastDayKey === todayKey(),
+      rows,
+      moodDistOverall: distToPct(moodDistOverall),
+    };
   });

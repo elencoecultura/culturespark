@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, LineChart, TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { Loader2, LineChart, TrendingDown, TrendingUp, Minus, Search, X, ArrowLeft } from "lucide-react";
 import { getWellbeingTimeline } from "@/lib/wellbeing-timeline.functions";
-
-const PERIOD_LABEL: Record<"dia" | "mes" | "ano", string> = { dia: "Dia", mes: "Mês", ano: "Ano" };
+import { listAnalyticsMembers } from "@/lib/gamification-analytics.functions";
+import { PeriodPicker, type PeriodValue } from "./PeriodPicker";
 
 // Paleta categórica validada (slots do tema padrão, passo escuro — ver skill
 // dataviz/references/palette.md), conferida contra o roxo/azul de fundo do
@@ -178,13 +178,34 @@ export function TrendCard({
   );
 }
 
+type Member = { id: string; name: string; attraction: string | null; negocio: string | null };
+
 export default function WellbeingTimelineScreen() {
-  const [period, setPeriod] = useState<"dia" | "mes" | "ano">("mes");
+  const [periodValue, setPeriodValue] = useState<PeriodValue>({ kind: "preset", period: "mes" });
+  const [query, setQuery] = useState("");
+  const [person, setPerson] = useState<Member | null>(null);
+
   const fn = useServerFn(getWellbeingTimeline);
+  const membersFn = useServerFn(listAnalyticsMembers);
+  const membersQ = useQuery({ queryKey: ["wellbeing-members"], queryFn: () => membersFn() });
+
+  const dateArgs = periodValue.kind === "preset" ? { period: periodValue.period } : { from: periodValue.from, to: periodValue.to };
   const q = useQuery({
-    queryKey: ["wellbeing-timeline", period],
-    queryFn: () => fn({ data: { period, mode: "department" } }),
+    queryKey: ["wellbeing-timeline", dateArgs, person?.id ?? null],
+    queryFn: () =>
+      fn({
+        data: person
+          ? { ...dateArgs, mode: "individual" as const, user_id: person.id }
+          : { ...dateArgs, mode: "department" as const },
+      }),
   });
+
+  const matches = useMemo(() => {
+    const list = membersQ.data?.members ?? [];
+    const q2 = query.trim().toLowerCase();
+    if (!q2) return [];
+    return list.filter((m) => m.name.toLowerCase().includes(q2)).slice(0, 8);
+  }, [membersQ.data, query]);
 
   return (
     <div className="text-white">
@@ -194,28 +215,70 @@ export default function WellbeingTimelineScreen() {
         </div>
         <h2 className="mt-1 font-display text-[22px] font-black tracking-[-0.03em] text-white">Evolução do bem-estar</h2>
         <p className="mt-1 text-[12.5px] text-white/60">
-          Humor médio ao longo do tempo, área por área. Toque num gráfico pra ver um dia específico.
+          {person ? `Histórico de humor de ${person.name}.` : "Humor médio ao longo do tempo, área por área."} Toque num gráfico pra ver um dia específico.
         </p>
       </div>
 
-      <div className="flex gap-2 px-1 mb-4">
-        {(["dia", "mes", "ano"] as const).map((p) => (
+      <div className="grid gap-2 px-1 mb-4">
+        <PeriodPicker value={periodValue} onChange={setPeriodValue} />
+
+        {person ? (
           <button
-            key={p}
             type="button"
-            onClick={() => setPeriod(p)}
-            className={`rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition ${
-              period === p ? "bg-brand-grad text-white shadow-glow" : "glass-chip text-white/75"
-            }`}
+            onClick={() => setPerson(null)}
+            className="glass-chip flex w-fit items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-semibold text-white/85"
           >
-            {PERIOD_LABEL[p]}
+            <ArrowLeft size={13} /> Voltar pra visão por área
           </button>
-        ))}
+        ) : (
+          <div className="relative">
+            <div className="glass-input flex items-center gap-2 rounded-2xl px-3.5 py-2.5">
+              <Search size={14} className="shrink-0 text-white/50" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Pesquisar por pessoa"
+                className="w-full bg-transparent text-[13px] text-white outline-none placeholder:text-white/40"
+              />
+              {query && (
+                <button type="button" onClick={() => setQuery("")} className="shrink-0 text-white/50">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            {matches.length > 0 && (
+              <div className="glass-strong absolute inset-x-0 top-full z-10 mt-1.5 grid gap-0.5 rounded-2xl p-1.5">
+                {matches.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => {
+                      setPerson(m);
+                      setQuery("");
+                    }}
+                    className="rounded-xl px-3 py-2 text-left text-[13px] text-white hover:bg-white/10"
+                  >
+                    {m.name}
+                    <span className="ml-1.5 text-[11px] text-white/50">{m.attraction ?? m.negocio ?? ""}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {q.isLoading && (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="h-6 w-6 animate-spin text-white/60" />
+        </div>
+      )}
+
+      {q.isError && (
+        <div className="glass-chip rounded-2xl py-6 text-center text-[13px] text-white/60">
+          {(q.error as Error)?.message === "Forbidden"
+            ? "Você não tem acesso ao histórico individual dessa pessoa."
+            : "Não consegui carregar."}
         </div>
       )}
 

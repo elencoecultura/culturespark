@@ -2,43 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { SUPREME_EMAILS } from "@/lib/wellbeing.functions";
-
-const PERIODS = ["dia", "mes", "ano"] as const;
-const tz = "America/Sao_Paulo";
-const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
-
-// Servidor roda em UTC (Vercel) — se o início do período fosse calculado com
-// Date.getFullYear/getMonth/getDate (hora local do processo, ou seja, UTC) e
-// as chaves formatadas em America/Sao_Paulo (3h atrás de UTC), o balde de
-// "hoje" nunca batia com o dia real em São Paulo e a maior parte do check-in
-// do dia sumia do gráfico. Por isso tudo aqui é calculado em cima de chaves
-// "YYYY-MM-DD" já no fuso de SP, nunca misturando com Date local do processo.
-function addDaysToKey(key: string, n: number): string {
-  const [y, m, d] = key.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() + n);
-  return dt.toISOString().slice(0, 10);
-}
-
-function periodStartKey(period: (typeof PERIODS)[number], todayKey: string): string {
-  const [y, m] = todayKey.split("-");
-  if (period === "dia") return todayKey;
-  if (period === "mes") return `${y}-${m}-01`;
-  return `${y}-01-01`;
-}
-
-function buildBuckets(period: (typeof PERIODS)[number]) {
-  const todayKey = fmt.format(new Date());
-  const startKey = periodStartKey(period, todayKey);
-  const dayKeys: string[] = [];
-  for (let k = startKey; k <= todayKey; k = addDaysToKey(k, 1)) dayKeys.push(k);
-  const bucketKeys = period === "ano" ? Array.from(new Set(dayKeys.map((k) => k.slice(0, 7)))) : dayKeys;
-  const keyFor = (iso: string) => {
-    const day = fmt.format(new Date(iso));
-    return period === "ano" ? day.slice(0, 7) : day;
-  };
-  return { sinceIso: `${startKey}T00:00:00-03:00`, bucketKeys, keyFor };
-}
+import { PERIODS, resolveDateBuckets } from "@/lib/date-buckets";
 
 function avgSeries(bucketKeys: string[], entries: Array<{ key: string; mood: number }>) {
   const sums = new Map<string, number>();
@@ -60,12 +24,17 @@ function avgSeries(bucketKeys: string[], entries: Array<{ key: string; mood: num
 // - department: comparação por área. Quem enxerga tudo (admin/TODOS) compara
 //   casa a casa; gerente/direção (escopo de uma casa só) compara setor a
 //   setor dentro da própria casa.
+// Período: um preset (dia/mês/ano, sempre até hoje) ou uma janela
+// personalizada (from/to, "YYYY-MM-DD") — a janela personalizada tem
+// prioridade quando os dois vêm preenchidos.
 export const getWellbeingTimeline = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
     z
       .object({
         period: z.enum(PERIODS).default("mes"),
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         mode: z.enum(["individual", "department"]).default("department"),
         user_id: z.string().uuid().optional(),
       })
@@ -73,7 +42,7 @@ export const getWellbeingTimeline = createServerFn({ method: "GET" })
   )
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { bucketKeys, sinceIso, keyFor } = buildBuckets(data.period);
+    const { bucketKeys, sinceIso, untilIso, keyFor } = resolveDateBuckets(data);
 
     const { data: me } = await supabaseAdmin
       .from("profiles")
@@ -91,7 +60,8 @@ export const getWellbeingTimeline = createServerFn({ method: "GET" })
         .from("mood_checkins")
         .select("mood, created_at")
         .eq("user_id", targetId)
-        .gte("created_at", sinceIso);
+        .gte("created_at", sinceIso)
+        .lt("created_at", untilIso);
       if (error) throw new Error(error.message);
       const entries = (moods ?? []).map((m) => ({ key: keyFor(m.created_at as string), mood: m.mood as number }));
       return { buckets: bucketKeys, series: [{ label: "Você", values: avgSeries(bucketKeys, entries) }] };
@@ -126,7 +96,8 @@ export const getWellbeingTimeline = createServerFn({ method: "GET" })
       .from("mood_checkins")
       .select("user_id, mood, created_at")
       .in("user_id", ids)
-      .gte("created_at", sinceIso);
+      .gte("created_at", sinceIso)
+      .lt("created_at", untilIso);
     if (error) throw new Error(error.message);
 
     const byGroup = new Map<string, Array<{ key: string; mood: number }>>();

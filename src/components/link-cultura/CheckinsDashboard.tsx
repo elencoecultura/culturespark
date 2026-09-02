@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Gauge, Smile, MessageCircle, HeartCrack, ChevronDown, ChefHat } from "lucide-react";
 import { getCheckinsByHouse } from "@/lib/checkins-dashboard.functions";
+import { PeriodPicker, type PeriodValue } from "./PeriodPicker";
 
 type HouseRow = Awaited<ReturnType<typeof getCheckinsByHouse>>["rows"][number];
 type MoodDist = { baixoPct: number; medioPct: number; altoPct: number; total: number };
@@ -136,9 +137,13 @@ function SetorBreakdown({ bySetor }: { bySetor: HouseRow["bySetor"] }) {
   );
 }
 
-const PERIOD_PHRASE: Record<"dia" | "mes" | "ano", string> = { dia: "hoje", mes: "no mês", ano: "no ano" };
+function periodPhraseFor(value: PeriodValue): string {
+  if (value.kind === "preset") return { dia: "hoje", mes: "no mês", ano: "no ano" }[value.period];
+  const fmt = (d: string) => new Date(d + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  return `de ${fmt(value.from)} até ${fmt(value.to)}`;
+}
 
-function HouseCard({ row, days, period }: { row: HouseRow; days: string[]; period: "dia" | "mes" | "ano" }) {
+function HouseCard({ row, days, periodPhrase, lastDayLabel }: { row: HouseRow; days: string[]; periodPhrase: string; lastDayLabel: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="glass-strong rounded-[26px] p-4">
@@ -152,13 +157,13 @@ function HouseCard({ row, days, period }: { row: HouseRow; days: string[]; perio
             </span>
           </div>
           <p className="mt-0.5 text-[11.5px] text-white/60">
-            {row.todayCount}/{row.headcount} fizeram check-in hoje · média de {row.avgPct}% {PERIOD_PHRASE[period]}
+            {row.todayCount}/{row.headcount} fizeram check-in {lastDayLabel} · média de {row.avgPct}% {periodPhrase}
           </p>
         </div>
       </div>
 
       <div className="mt-3">
-        <div className="mb-1 text-[10px] uppercase tracking-[0.08em] text-white/50">Energia ({PERIOD_PHRASE[period]})</div>
+        <div className="mb-1 text-[10px] uppercase tracking-[0.08em] text-white/50">Energia ({periodPhrase})</div>
         <MoodDistBar dist={row.moodDist} />
       </div>
 
@@ -187,15 +192,20 @@ function HouseCard({ row, days, period }: { row: HouseRow; days: string[]; perio
   );
 }
 
-const PERIOD_LABEL: Record<"dia" | "mes" | "ano", string> = { dia: "Dia", mes: "Mês", ano: "Ano" };
-
 export default function CheckinsDashboard() {
-  const [period, setPeriod] = useState<"dia" | "mes" | "ano">("mes");
+  const [periodValue, setPeriodValue] = useState<PeriodValue>({ kind: "preset", period: "mes" });
   const fn = useServerFn(getCheckinsByHouse);
+  const queryArgs = periodValue.kind === "preset" ? { period: periodValue.period } : { from: periodValue.from, to: periodValue.to };
   const q = useQuery({
-    queryKey: ["checkins-by-house", period],
-    queryFn: () => fn({ data: { period } }),
+    queryKey: ["checkins-by-house", queryArgs],
+    queryFn: () => fn({ data: queryArgs }),
   });
+  const periodPhrase = periodPhraseFor(periodValue);
+  const lastDayLabel = q.data?.isToday
+    ? "hoje"
+    : q.data?.to
+      ? `em ${new Date(q.data.to + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`
+      : "hoje";
 
   return (
     <div className="space-y-4">
@@ -205,23 +215,12 @@ export default function CheckinsDashboard() {
         </div>
         <h1 className="mt-1.5 font-display text-[24px] font-black tracking-[-0.03em] text-white">Como estão as casas</h1>
         <p className="text-[12.5px] text-white/65">
-          Check-in, humor, elogios e alertas — casa por casa. O anel mostra quem fez o check-in de hoje.
+          Check-in, humor, elogios e alertas — casa por casa. O anel mostra o check-in mais recente do período.
         </p>
       </div>
 
-      <div className="flex gap-2 px-1">
-        {(["dia", "mes", "ano"] as const).map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => setPeriod(p)}
-            className={`rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition ${
-              period === p ? "bg-brand-grad text-white shadow-glow" : "glass-chip text-white/75"
-            }`}
-          >
-            {PERIOD_LABEL[p]}
-          </button>
-        ))}
+      <div className="px-1">
+        <PeriodPicker value={periodValue} onChange={setPeriodValue} />
       </div>
 
       {q.isLoading && (
@@ -234,7 +233,7 @@ export default function CheckinsDashboard() {
         <>
           <div className="glass-soft rounded-[22px] p-4">
             <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/55">
-              Energia geral do elenco ({PERIOD_PHRASE[period]})
+              Energia geral do elenco ({periodPhrase})
             </div>
             <div className="mt-2">
               <MoodDistBar dist={q.data.moodDistOverall} />
@@ -243,7 +242,7 @@ export default function CheckinsDashboard() {
 
           <div className="grid gap-3">
             {q.data.rows.map((r) => (
-              <HouseCard key={r.house} row={r} days={q.data.days} period={period} />
+              <HouseCard key={r.house} row={r} days={q.data.days} periodPhrase={periodPhrase} lastDayLabel={lastDayLabel} />
             ))}
           </div>
         </>
