@@ -87,7 +87,7 @@ export default function BottomSheetModal({
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
         className={cn(
-          "glass-strong w-full max-w-[420px] rounded-[28px] p-5 outline-none",
+          "glass-strong max-h-[85vh] w-full max-w-[420px] overflow-y-auto rounded-[28px] p-5 outline-none",
           className,
         )}
         onClick={(e) => e.stopPropagation()}

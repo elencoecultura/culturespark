@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { confirmAction } from "@/lib/confirm";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useAppFrameContainer } from "@/hooks/useAppFrameContainer";
 import {
   listNotifications,
   markNotificationRead,
@@ -30,6 +31,7 @@ function timeAgo(iso: string) {
 
 export function NotificationsBell({ isAdmin }: { isAdmin: boolean }) {
   const [open, setOpen] = useState(false);
+  const frameContainer = useAppFrameContainer();
   const qc = useQueryClient();
   const listFn = useServerFn(listNotifications);
   const q = useQuery({
@@ -77,6 +79,7 @@ export function NotificationsBell({ isAdmin }: { isAdmin: boolean }) {
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
           side="bottom"
+          container={frameContainer}
           className="glass-strong max-h-[85vh] overflow-y-auto rounded-t-[28px] border-white/20 text-white"
         >
           <SheetHeader>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useRef, type ReactNode } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { useAppFrameContainer } from "@/hooks/useAppFrameContainer";
 import { MoreHorizontal, Compass, Briefcase, Wifi, Plus, BarChart3, Cake, PartyPopper, Gift, Gauge, Download, KeyRound } from "lucide-react";
 import {
   Home,
@@ -1839,6 +1840,7 @@ export default function LinkCulturaApp() {
   const [tab, setTab] = useState<TabId>("home");
   const navigate = useNavigate();
   const { profile, isLeader, isAdmin, isGerente, isDirecao, isLoading, canSelectBusiness } = useCurrentUser();
+  const frameContainer = useAppFrameContainer();
 
   const handleTabChange = (id: TabId) => {
     if (id === "evals") {
@@ -1993,7 +1995,7 @@ export default function LinkCulturaApp() {
           onMore={() => setMoreOpen(true)}
         />
         <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
-          <SheetContent side="bottom" className="glass-strong max-h-[85vh] overflow-y-auto border-white/20 text-white rounded-t-[28px]">
+          <SheetContent side="bottom" container={frameContainer} className="glass-strong max-h-[85vh] overflow-y-auto border-white/20 text-white rounded-t-[28px]">
             <SheetHeader>
               <SheetTitle className="text-white">Mais</SheetTitle>
             </SheetHeader>

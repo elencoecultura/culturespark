@@ -125,7 +125,7 @@ function RootShell({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        {children}
+        <div id="app-frame">{children}</div>
         <Scripts />
       </body>
     </html>

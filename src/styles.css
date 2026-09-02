@@ -105,6 +105,36 @@
        fora da tela em telas estreitas. */
     overflow-x: hidden;
   }
+
+  /* App é desenhado pra celular (coluna de até 430px). Em tela larga
+     (desktop/tablet), o conteúdo isso fica solto no meio de uma área vazia
+     enorme e menus/modais fixos (position:fixed) passavam a se centralizar
+     na janela inteira do navegador em vez de dentro dessa coluna — daí a
+     sensação de "vazando". #app-frame vira o "container" visual do app: a
+     partir de 481px de largura ele ganha bordas e limite de altura, e
+     position:relative faz qualquer position:fixed dentro dele (menu
+     inferior, modais) passar a se posicionar relativo a essa moldura, não
+     à janela toda. Só a partir de 481px — em celular de verdade a tela já
+     é a moldura, então isso fica desligado lá pra não arriscar mudar o
+     comportamento de position:fixed que já funciona bem em iOS/Android.
+     */
+  @media (min-width: 481px) {
+    #app-frame {
+      position: relative;
+      isolation: isolate;
+      /* contain:layout (não só position:relative) é o que de fato faz um
+         position:fixed dentro da moldura respeitar a moldura em vez da
+         janela do navegador — position:relative sozinho não vira
+         containing block pra fixed. */
+      contain: layout;
+      max-width: 430px;
+      height: 100dvh;
+      margin-inline: auto;
+      overflow-x: hidden;
+      overflow-y: auto;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 30px 80px rgba(0, 0, 0, 0.45);
+    }
+  }
   button,
   input,
   textarea {
