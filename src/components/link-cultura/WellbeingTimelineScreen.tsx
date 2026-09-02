@@ -89,8 +89,8 @@ export function LineChartSvg({ buckets, series }: { buckets: string[]; series: A
   }, [series]);
 
   return (
-    <div className="relative">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 220 }}>
+    <div className="relative w-full" style={{ aspectRatio: `${W} / ${H}` }}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full">
         <defs>
           {seriesWithColor.map((s) => (
             <linearGradient key={s.label} id={`wb-fill-${s.label.replace(/\W/g, "")}`} x1="0" y1="0" x2="0" y2="1">
@@ -190,12 +190,12 @@ export function LineChartSvg({ buckets, series }: { buckets: string[]; series: A
       </svg>
 
       {/* rótulos do valor final, fora do SVG pra não precisar medir texto em coordenadas SVG */}
-      <div className="pointer-events-none absolute right-0 top-0" style={{ height: 220 }}>
+      <div className="pointer-events-none absolute inset-0">
         {endLabels.map((e) => (
           <div
             key={e.label}
             className="absolute right-1 flex -translate-y-1/2 items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold text-white"
-            style={{ top: (e.y / H) * 220, backgroundColor: e.color }}
+            style={{ top: `${(e.y / H) * 100}%`, backgroundColor: e.color }}
           >
             {e.value.toFixed(1)}
           </div>
