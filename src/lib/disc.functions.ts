@@ -93,7 +93,6 @@ export const submitDiscTest = createServerFn({ method: "POST" })
             z.object({ n: z.number().int().min(1).max(24), label: z.enum(["A", "B", "C", "D"]) }),
           )
           .length(24),
-        share_with_leadership: z.boolean().optional(),
       })
       .parse(d),
   )
@@ -129,7 +128,9 @@ export const submitDiscTest = createServerFn({ method: "POST" })
         combination: combo?.name ?? null,
         profile_type,
         answers: data.answers,
-        share_with_leadership: data.share_with_leadership ?? false,
+        // Compartilhar com a liderança deixou de ser opcional — decisão
+        // explícita do cliente: resultado sempre visível pra quem lidera.
+        share_with_leadership: true,
       })
       .select("id")
       .single();
@@ -145,21 +146,20 @@ export const submitDiscTest = createServerFn({ method: "POST" })
     };
   });
 
-// Gerente/direção/admin: resultados de quem consentiu compartilhar +
-// distribuição do time. Mesmo escopo do NPS — gerente/direção só vê a
-// própria casa, admin (ou attraction/negocio="TODOS") vê tudo. Líder comum
-// fica de fora (mesma razão do NPS: reporta pro gerente, não vê o escopo
-// que é dele).
+// Resultado sempre visível pra quem lidera (share_with_leadership deixou de
+// ser opcional). Escopo: admin (ou attraction/negocio="TODOS") vê tudo,
+// gerente/direção vê a própria casa inteira, líder vê só quem lidera direto
+// (manager_id/co_leader_id apontando pra ele) — igual ao resto do app.
 export const listTeamDiscResults = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const checks = await Promise.all(
-      (["admin", "gerente", "direcao"] as const).map((role) =>
+      (["admin", "lider", "gerente", "direcao"] as const).map((role) =>
         context.supabase.rpc("has_role", { _user_id: context.userId, _role: role }),
       ),
     );
     if (!checks.some((c: any) => c.data)) throw new Error("Forbidden");
-    const [isAdmin] = checks.map((c: any) => c.data);
+    const [isAdmin, , isGerente, isDirecao] = checks.map((c: any) => c.data);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: myProfile } = await supabaseAdmin
@@ -169,6 +169,7 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
       .maybeSingle();
     const hasTodosScope = myProfile?.attraction === "TODOS" || myProfile?.negocio === "TODOS";
     const seesAll = isAdmin || hasTodosScope;
+    const seesWholeCasa = seesAll || isGerente || isDirecao;
 
     const res = await context.supabase
       .from("behavioral_tests")
@@ -186,7 +187,10 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
 
     const allIds = allBase.map((r) => r.user_id);
     const { data: profs } = allIds.length
-      ? await supabaseAdmin.from("profiles").select("id, full_name, attraction, negocio, setor").in("id", allIds)
+      ? await supabaseAdmin
+          .from("profiles")
+          .select("id, full_name, attraction, negocio, setor, manager_id, co_leader_id")
+          .in("id", allIds)
       : {
           data: [] as Array<{
             id: string;
@@ -194,17 +198,23 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
             attraction: string | null;
             negocio: string | null;
             setor: string | null;
+            manager_id: string | null;
+            co_leader_id: string | null;
           }>,
         };
     const profById = new Map((profs ?? []).map((p) => [p.id, p]));
 
-    // gerente/direção só vê a própria casa (attraction/negocio) — admin/TODOS vê tudo.
     const base = seesAll
       ? allBase
-      : allBase.filter((r) => {
-          const p = profById.get(r.user_id);
-          return (p?.attraction ?? p?.negocio) === myProfile?.attraction;
-        });
+      : seesWholeCasa
+        ? allBase.filter((r) => {
+            const p = profById.get(r.user_id);
+            return (p?.attraction ?? p?.negocio) === myProfile?.attraction;
+          })
+        : allBase.filter((r) => {
+            const p = profById.get(r.user_id);
+            return p?.manager_id === context.userId || p?.co_leader_id === context.userId;
+          });
 
     type GroupBucket = { distribution: Record<Essence, number>; scoreSum: Record<Essence, number>; total: number };
     const distribution: Record<Essence, number> = { D: 0, I: 0, S: 0, C: 0 };

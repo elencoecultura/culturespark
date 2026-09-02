@@ -57,16 +57,12 @@ export default function Bussola({ name }: { name: string }) {
   const [phase, setPhase] = useState<"intro" | "quiz" | "result">("intro");
   const [answers, setAnswers] = useState<Record<number, Label>>({});
   const [idx, setIdx] = useState(0);
-  const [consent, setConsent] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
 
   const qc = useQueryClient();
   const submitFn = useServerFn(submitDiscTest);
   const submit = useMutation({
-    mutationFn: (payload: {
-      answers: { n: number; label: Label }[];
-      share_with_leadership: boolean;
-    }) => submitFn({ data: payload }),
+    mutationFn: (payload: { answers: { n: number; label: Label }[] }) => submitFn({ data: payload }),
     onSuccess: (r: any) => {
       setResult({
         scores: r.scores,
@@ -89,7 +85,7 @@ export default function Bussola({ name }: { name: string }) {
       setTimeout(() => setIdx((i) => i + 1), 160);
     } else {
       const payload = QUESTIONS.map((qq) => ({ n: qq.n, label: next[qq.n] }));
-      submit.mutate({ answers: payload, share_with_leadership: consent });
+      submit.mutate({ answers: payload });
     }
   }
 
@@ -132,8 +128,6 @@ export default function Bussola({ name }: { name: string }) {
           loading={status.isLoading}
           status={status.data}
           lastResult={lastResult}
-          consent={consent}
-          setConsent={setConsent}
           onStart={() => {
             setAnswers({});
             setIdx(0);
@@ -194,8 +188,6 @@ function IntroView({
   loading,
   status,
   lastResult,
-  consent,
-  setConsent,
   onStart,
   onViewLast,
 }: {
@@ -203,8 +195,6 @@ function IntroView({
   loading: boolean;
   status: any;
   lastResult: Result | null;
-  consent: boolean;
-  setConsent: (v: boolean) => void;
   onStart: () => void;
   onViewLast?: () => void;
 }) {
@@ -303,17 +293,9 @@ function IntroView({
 
       {eligible && (
         <>
-          <label className="flex cursor-pointer items-start gap-3 px-1">
-            <input
-              type="checkbox"
-              checked={consent}
-              onChange={(e) => setConsent(e.target.checked)}
-              className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-pink"
-            />
-            <span className="text-[12.5px] leading-snug text-white/75">
-              Autorizo compartilhar meu resultado com a liderança da Hector (opcional).
-            </span>
-          </label>
+          <p className="px-1 text-[12px] leading-snug text-white/60">
+            Seu resultado fica visível pra sua liderança na Hector Studios.
+          </p>
           <button onClick={onStart} className={BTN_PRIMARY}>
             <Sparkles size={16} /> Iniciar minha jornada
           </button>
@@ -659,8 +641,8 @@ export function BussolaAdmin() {
           Mapa comportamental
         </h1>
         <p className="text-[12.5px] text-white/65">
-          Resultados de quem autorizou compartilhar com a liderança
-          {data && !data.seesAll ? " · mostrando só a sua casa" : ""}.
+          Resultado completo de cada pessoa do seu time
+          {data && !data.seesAll ? " sob sua liderança" : ""}.
         </p>
       </div>
 
@@ -817,7 +799,7 @@ export function BussolaAdmin() {
             })}
             {rows.length === 0 && (
               <div className="glass-chip rounded-2xl px-4 py-3 text-[13px] text-white/70">
-                Ninguém autorizou compartilhar o resultado ainda.
+                Ninguém do seu time fez o teste ainda.
               </div>
             )}
           </div>

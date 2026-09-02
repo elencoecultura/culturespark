@@ -1894,8 +1894,10 @@ export default function LinkCulturaApp() {
       if (isAdmin || isGerente || isDirecao) {
         gestao.push({ id: "nps-results", label: "Resultados do NPS", icon: Star, desc: "NPS e evolução da sua casa" });
         gestao.push({ id: "wellbeing-timeline", label: "Evolução do bem-estar", icon: TrendingUp, desc: "Humor médio ao longo do tempo, por área" });
-        gestao.push({ id: "disc-admin", label: "Bússola do time", icon: Compass, desc: "Perfis comportamentais (quem consentiu)" });
       }
+      // Bússola: líder vê o resultado completo de quem lidera direto,
+      // gerente/direção da casa inteira, admin de todo mundo.
+      gestao.push({ id: "disc-admin", label: "Bússola do time", icon: Compass, desc: "Perfis comportamentais do seu time" });
       if (!isAdmin) gestao.push({ id: "team", label: "Elenco", icon: Users, desc: "Gerenciar pessoas" });
       groups.push({ title: "Gestão", items: gestao });
     }
