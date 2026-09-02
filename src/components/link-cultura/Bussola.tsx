@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, Check, Loader2, Lock, RefreshCw, Compass, Sparkles, ChevronRight } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Lock, RefreshCw, Compass, Sparkles, ChevronRight, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getDiscStatus, submitDiscTest, listTeamDiscResults } from "@/lib/disc.functions";
 import { QUESTIONS, ESSENCES, comboFor, characterFor, type Essence } from "@/lib/disc-content";
@@ -624,25 +624,116 @@ function MiniScoreBars({ scores }: { scores: Record<Essence, number> }) {
   );
 }
 
+function discCsv(v: unknown): string {
+  const s = String(v ?? "");
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
 export function BussolaAdmin() {
   const fn = useServerFn(listTeamDiscResults);
   const { data, isLoading } = useQuery({ queryKey: ["disc-team"], queryFn: () => fn() });
   const rows = data?.rows ?? [];
   const dist = data?.distribution ?? { D: 0, I: 0, S: 0, C: 0 };
   const maxDist = Math.max(1, ...ORDER.map((e) => dist[e]));
+  const [selected, setSelected] = useState<(typeof rows)[number] | null>(null);
+
+  function exportCsv() {
+    const header = [
+      "Nome",
+      "Casa",
+      "Setor",
+      "Essência primária",
+      "Essência secundária",
+      "Combinação",
+      "Perfil",
+      "D",
+      "I",
+      "S",
+      "C",
+      "Data do teste",
+    ];
+    const lines = [header.join(",")];
+    for (const r of rows) {
+      lines.push(
+        [
+          r.name,
+          r.attraction ?? "",
+          r.setor ?? "",
+          ESSENCES[r.primary as Essence].name,
+          r.secondary ? ESSENCES[r.secondary as Essence].name : "",
+          r.combination ?? "",
+          r.profile_type,
+          r.scores.D,
+          r.scores.I,
+          r.scores.S,
+          r.scores.C,
+          new Date(r.taken_at).toLocaleDateString("pt-BR"),
+        ]
+          .map(discCsv)
+          .join(","),
+      );
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bussola-time-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (selected) {
+    return (
+      <>
+        <button
+          onClick={() => setSelected(null)}
+          className="mt-1 flex items-center gap-1.5 text-[13px] font-semibold text-white/70 hover:text-white"
+        >
+          <ArrowLeft size={16} /> Voltar pro time
+        </button>
+        <div className="mt-3 px-1">
+          <div className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-white/55">
+            Resultado completo
+          </div>
+          <h1 className="mt-1 font-display text-[22px] font-black tracking-[-0.03em] text-white">
+            {selected.name}
+          </h1>
+          <p className="text-[12px] text-white/55">
+            {[selected.attraction, selected.setor].filter(Boolean).join(" · ")} · teste feito em{" "}
+            {new Date(selected.taken_at).toLocaleDateString("pt-BR")}
+          </p>
+        </div>
+        <ResultView result={selected} />
+      </>
+    );
+  }
 
   return (
     <>
       <div className="px-1 pt-1">
-        <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.18em] text-white/55">
-          <Compass size={13} /> Bússola do time
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.18em] text-white/55">
+              <Compass size={13} /> Bússola do time
+            </div>
+            <h1 className="mt-1.5 font-display text-[24px] font-black tracking-[-0.03em] text-white">
+              Mapa comportamental
+            </h1>
+          </div>
+          {rows.length > 0 && (
+            <button
+              type="button"
+              onClick={exportCsv}
+              className="glass-chip flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-[11.5px] font-semibold text-white"
+            >
+              <Download size={13} /> CSV
+            </button>
+          )}
         </div>
-        <h1 className="mt-1.5 font-display text-[24px] font-black tracking-[-0.03em] text-white">
-          Mapa comportamental
-        </h1>
         <p className="text-[12.5px] text-white/65">
           Resultado completo de cada pessoa do seu time
-          {data && !data.seesAll ? " sob sua liderança" : ""}.
+          {data && !data.seesAll ? " sob sua liderança" : ""}. Toque numa pessoa pra ver a descrição inteira.
         </p>
       </div>
 
@@ -769,7 +860,8 @@ export function BussolaAdmin() {
             {rows.map((r) => {
               const c = ESSENCE_COLOR[r.primary as Essence];
               return (
-                <Card key={r.user_id} className="p-4">
+                <button key={r.user_id} type="button" onClick={() => setSelected(r)} className="block w-full text-left">
+                <Card className="p-4 transition active:scale-[0.99]">
                   <div className="flex items-start gap-3">
                     <span
                       className={cn(
@@ -799,6 +891,7 @@ export function BussolaAdmin() {
                   </div>
                   <MiniScoreBars scores={r.scores} />
                 </Card>
+                </button>
               );
             })}
             {rows.length === 0 && (
