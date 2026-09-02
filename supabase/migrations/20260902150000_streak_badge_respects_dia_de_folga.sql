@@ -40,11 +40,14 @@ BEGIN
     SELECT DISTINCT (created_at AT TIME ZONE 'America/Sao_Paulo')::date AS d
     FROM public.mood_checkins WHERE user_id = _user_id
   ),
+  with_lag AS (
+    SELECT d, LAG(d) OVER (ORDER BY d) AS prev_d FROM days
+  ),
   gapped AS (
     SELECT d,
-      SUM(CASE WHEN d - LAG(d) OVER (ORDER BY d) > (grace + 1) THEN 1 ELSE 0 END)
+      SUM(CASE WHEN d - prev_d > (grace + 1) THEN 1 ELSE 0 END)
         OVER (ORDER BY d) AS grp
-    FROM days
+    FROM with_lag
   ),
   groups AS (
     SELECT grp, COUNT(*)::int AS len, MAX(d) AS last_d FROM gapped GROUP BY grp
