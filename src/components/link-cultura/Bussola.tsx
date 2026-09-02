@@ -860,7 +860,7 @@ export function BussolaAdmin() {
             {rows.map((r) => {
               const c = ESSENCE_COLOR[r.primary as Essence];
               return (
-                <button key={r.user_id} type="button" onClick={() => setSelected(r)} className="block w-full text-left">
+                <button key={r.user_id} type="button" onClick={() => setSelected(r)} className="block w-full min-w-0 text-left">
                 <Card className="p-4 transition active:scale-[0.99]">
                   <div className="flex items-start gap-3">
                     <span

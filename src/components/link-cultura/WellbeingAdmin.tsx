@@ -84,7 +84,7 @@ export default function WellbeingAdmin() {
               tabIndex={0}
               onClick={() => setOpenId(openId === r.user_id ? null : r.user_id)}
               onKeyDown={(e) => e.key === "Enter" && setOpenId(openId === r.user_id ? null : r.user_id)}
-              className="w-full cursor-pointer text-left glass-chip rounded-2xl border border-magic-amber/40 p-4"
+              className="w-full min-w-0 cursor-pointer text-left glass-chip rounded-2xl border border-magic-amber/40 p-4"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -127,7 +127,7 @@ export default function WellbeingAdmin() {
               tabIndex={0}
               onClick={() => setOpenId(openId === r.user_id ? null : r.user_id)}
               onKeyDown={(e) => e.key === "Enter" && setOpenId(openId === r.user_id ? null : r.user_id)}
-              className="w-full cursor-pointer text-left glass-chip rounded-2xl p-3 text-[12.5px] text-white/70"
+              className="w-full min-w-0 cursor-pointer text-left glass-chip rounded-2xl p-3 text-[12.5px] text-white/70"
             >
               <span className="font-semibold text-white">{r.name}</span> · média {r.avgMood} ·{" "}
               {r.checkins} check-in{r.checkins === 1 ? "" : "s"}
