@@ -880,7 +880,7 @@ export function BussolaAdmin() {
                           {new Date(r.taken_at).toLocaleDateString("pt-BR")}
                         </span>
                       </div>
-                      <div className="truncate text-[11.5px] text-white/65">
+                      <div className="text-[11.5px] leading-snug text-white/65">
                         {ESSENCES[r.primary as Essence].name}
                         {r.secondary ? ` + ${ESSENCES[r.secondary as Essence].name}` : ""}
                         {r.combination ? ` · ${r.combination}` : ""}
