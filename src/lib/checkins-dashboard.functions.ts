@@ -35,10 +35,25 @@ function distToPct(d: { baixo: number; medio: number; alto: number; total: numbe
 const PERIODS = ["dia", "mes", "ano"] as const;
 type Period = (typeof PERIODS)[number];
 
-function periodStart(period: Period, now: Date): Date {
-  if (period === "dia") return new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  if (period === "mes") return new Date(now.getFullYear(), now.getMonth(), 1);
-  return new Date(now.getFullYear(), 0, 1);
+// Servidor roda em UTC (Vercel) — se o "hoje"/início do período fosse
+// calculado com Date.getFullYear/getMonth/getDate (hora local do processo,
+// ou seja, UTC) e as chaves dos baldes formatadas em America/Sao_Paulo (3h
+// atrás de UTC), o balde de "hoje" nunca batia com o dia real em São Paulo
+// e boa parte do check-in do dia sumia do painel. Por isso todo o cálculo
+// de datas aqui é feito em cima de chaves "YYYY-MM-DD" já no fuso de SP,
+// nunca misturando com Date local do processo.
+function addDaysToKey(key: string, n: number): string {
+  const [y, m, d] = key.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+}
+
+function periodStartKey(period: Period, todayKey: string): string {
+  const [y, m] = todayKey.split("-");
+  if (period === "dia") return todayKey;
+  if (period === "mes") return `${y}-${m}-01`;
+  return `${y}-01-01`;
 }
 
 // Painel principal de casas: pra cada atração, junta check-in (hoje e no
@@ -55,16 +70,15 @@ export const getCheckinsByHouse = createServerFn({ method: "GET" })
     const tz = "America/Sao_Paulo";
     const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
 
-    const now = new Date();
-    const start = periodStart(data.period, now);
+    const todayKey = fmt.format(new Date());
+    const startKey = periodStartKey(data.period, todayKey);
     // Matriz interna sempre por dia (pra média/percentuais ficarem exatos);
     // "ano" só agrupa em mês na hora de montar a série do gráfico.
     const dayKeys: string[] = [];
-    for (let d = new Date(start); d <= now; d.setDate(d.getDate() + 1)) {
-      dayKeys.push(fmt.format(d));
+    for (let k = startKey; k <= todayKey; k = addDaysToKey(k, 1)) {
+      dayKeys.push(k);
     }
-    const todayKey = fmt.format(now);
-    const sinceIso = start.toISOString();
+    const sinceIso = `${startKey}T00:00:00-03:00`;
     const chartKeys = data.period === "ano" ? Array.from(new Set(dayKeys.map((k) => k.slice(0, 7)))) : dayKeys;
 
     const { data: profiles } = await supabaseAdmin
