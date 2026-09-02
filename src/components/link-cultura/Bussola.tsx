@@ -856,7 +856,7 @@ export function BussolaAdmin() {
             </Card>
           )}
 
-          <div className="grid gap-2">
+          <div className="grid gap-2 px-5">
             {rows.map((r) => {
               const c = ESSENCE_COLOR[r.primary as Essence];
               return (
