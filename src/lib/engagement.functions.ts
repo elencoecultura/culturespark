@@ -227,6 +227,23 @@ export const sendKudos = createServerFn({ method: "POST" })
       if (sentToday >= KUDOS_PER_DAY_LIMIT) {
         throw new Error(`Você já mandou ${KUDOS_PER_DAY_LIMIT} elogios hoje — volta amanhã pra mandar mais.`);
       }
+    } else {
+      // Elogio de aniversário: livre da contagem diária, mas só 1 por
+      // aniversariante (janela de ~300 dias — cobre "o ano do aniversário
+      // atual" sem depender de virada de ano exata).
+      const since = new Date(Date.now() - 300 * 86_400_000).toISOString();
+      const { data: alreadySent } = await context.supabase
+        .from("kudos")
+        .select("id")
+        .eq("from_user", context.userId)
+        .eq("to_user", data.to_user)
+        .eq("category", "aniversario")
+        .gte("created_at", since)
+        .limit(1)
+        .maybeSingle();
+      if (alreadySent) {
+        throw new Error("Você já mandou um feliz aniversário pra essa pessoa esse ano.");
+      }
     }
 
     const { error } = await context.supabase.from("kudos").insert({
