@@ -75,12 +75,15 @@ export const getCheckinsByHouse = createServerFn({ method: "GET" })
     });
     const houses = Object.keys(headcount).sort();
 
+    // .limit() explícito em todas: sem ele o Supabase corta em 1000 linhas
+    // por padrão — período "Ano" com ~100 pessoas passa disso fácil e os
+    // números saem incompletos sem nenhum erro aparecer.
     const [{ data: checkins, error: cErr }, { data: moodsInPeriod, error: mErr }, { data: kudosInPeriod, error: kErr }, { data: lowEnergyInPeriod }] =
       await Promise.all([
-        supabaseAdmin.from("mood_checkins").select("user_id, mood, created_at").gte("created_at", sinceIso).lt("created_at", untilIso),
-        supabaseAdmin.from("mood_checkins").select("user_id, mood").gte("created_at", sinceIso).lt("created_at", untilIso),
-        supabaseAdmin.from("kudos").select("from_user, to_user").gte("created_at", sinceIso).lt("created_at", untilIso),
-        supabaseAdmin.from("low_energy_alerts").select("user_id").gte("triggered_at", sinceIso).lt("triggered_at", untilIso),
+        supabaseAdmin.from("mood_checkins").select("user_id, mood, created_at").gte("created_at", sinceIso).lt("created_at", untilIso).limit(50000),
+        supabaseAdmin.from("mood_checkins").select("user_id, mood").gte("created_at", sinceIso).lt("created_at", untilIso).limit(50000),
+        supabaseAdmin.from("kudos").select("from_user, to_user").gte("created_at", sinceIso).lt("created_at", untilIso).limit(50000),
+        supabaseAdmin.from("low_energy_alerts").select("user_id").gte("triggered_at", sinceIso).lt("triggered_at", untilIso).limit(50000),
       ]);
     if (cErr) throw new Error(cErr.message);
     if (mErr) throw new Error(mErr.message);

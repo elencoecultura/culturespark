@@ -92,12 +92,16 @@ export const getWellbeingTimeline = createServerFn({ method: "GET" })
     const ids = scoped.map((p) => p.id as string);
     if (ids.length === 0) return { buckets: bucketKeys, series: [] };
 
+    // .limit() explícito: sem ele o Supabase corta em 1000 linhas por
+    // padrão — "Ano" com todo mundo passa disso fácil e a média sai
+    // incompleta sem nenhum erro aparecer.
     const { data: moods, error } = await context.supabase
       .from("mood_checkins")
       .select("user_id, mood, created_at")
       .in("user_id", ids)
       .gte("created_at", sinceIso)
-      .lt("created_at", untilIso);
+      .lt("created_at", untilIso)
+      .limit(50000);
     if (error) throw new Error(error.message);
 
     const byGroup = new Map<string, Array<{ key: string; mood: number }>>();

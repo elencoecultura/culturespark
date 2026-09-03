@@ -186,10 +186,15 @@ export const getAttractionLeaderboard = createServerFn({ method: "POST" })
     // mundo da atração, então usa o client de service role aqui. Sem isso,
     // cada pessoa via só os PRÓPRIOS pontos e todo mundo se achava em
     // 1º lugar (todos os outros apareciam zerados pra ela).
+    // .limit() explícito: sem ele o Supabase corta em 1000 linhas por
+    // padrão — o "geral" (todo mundo, ciclo de 60 dias) passa fácil disso
+    // e gente com pontos reais aparecia zerada, dependendo da ordem que as
+    // linhas voltavam do banco.
     let evQuery = supabaseAdmin
       .from("point_events")
       .select("user_id, points")
-      .in("user_id", ids);
+      .in("user_id", ids)
+      .limit(20000);
     if (cycle.start) evQuery = evQuery.gte("created_at", cycle.start);
     if (cycle.end) evQuery = evQuery.lt("created_at", cycle.end);
     const { data: events } = await evQuery;

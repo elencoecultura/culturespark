@@ -270,7 +270,10 @@ export const getGamificationAnalytics = createServerFn({ method: "POST" })
       // usa o client de service role pra não perder os eventos de quem não
       // é o próprio caller.
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      let q = supabaseAdmin.from("point_events").select("user_id, points, kind, created_at");
+      // .limit() explícito: sem ele o Supabase corta em 1000 linhas por
+      // padrão, e a tabela inteira já passa disso — sem filtro de data
+      // metade dos eventos some da consulta sem erro nenhum.
+      let q = supabaseAdmin.from("point_events").select("user_id, points, kind, created_at").limit(50000);
       if (data.from) q = q.gte("created_at", data.from);
       if (data.to) q = q.lt("created_at", data.to);
       if (data.kind) q = q.eq("kind", data.kind);
