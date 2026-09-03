@@ -69,31 +69,5 @@ DROP TRIGGER IF EXISTS auto_complete_week ON public.mood_checkins;
 CREATE TRIGGER auto_complete_week AFTER INSERT ON public.mood_checkins
   FOR EACH ROW EXECUTE FUNCTION public.trg_auto_complete_week();
 
--- Passada única: aplica retroativo pra quem já bateu o número de dias
--- exigido em alguma semana passada e nunca teve a linha marcada (nem por
--- líder, nem pelo gatilho novo, já que ele só passa a existir daqui pra
--- frente).
-DO $$
-DECLARE r record;
-BEGIN
-  FOR r IN
-    SELECT
-      mc.user_id,
-      date_trunc('week', (mc.created_at AT TIME ZONE 'America/Sao_Paulo'))::date AS week_start,
-      COUNT(DISTINCT (mc.created_at AT TIME ZONE 'America/Sao_Paulo')::date) AS days_checked,
-      p.negocio,
-      p.attraction,
-      p.weekly_hours
-    FROM public.mood_checkins mc
-    JOIN public.profiles p ON p.id = mc.user_id
-    GROUP BY mc.user_id, date_trunc('week', (mc.created_at AT TIME ZONE 'America/Sao_Paulo'))::date, p.negocio, p.attraction, p.weekly_hours
-    HAVING COUNT(DISTINCT (mc.created_at AT TIME ZONE 'America/Sao_Paulo')::date) >=
-      (CASE WHEN UPPER(COALESCE(p.negocio,'')) = 'HECTOR STUDIOS' THEN 5 ELSE 6 END)
-  LOOP
-    INSERT INTO public.weekly_schedules(user_id, week_start, attraction, weekly_hours, completed_full, created_by)
-    VALUES (r.user_id, r.week_start, COALESCE(r.attraction, 'Hector Studios'), COALESCE(r.weekly_hours, 44), true, r.user_id)
-    ON CONFLICT (week_start, user_id) DO UPDATE
-      SET completed_full = true
-      WHERE public.weekly_schedules.completed_full IS DISTINCT FROM true;
-  END LOOP;
-END $$;
+-- Sem passada retroativa: só conta a partir de agora, semana corrente em
+-- diante. Ninguém ganha os 20 pontos de semanas passadas de uma vez.
