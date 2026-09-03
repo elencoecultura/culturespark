@@ -70,25 +70,35 @@ export const getWellbeingTimeline = createServerFn({ method: "GET" })
 
     // department mode
     const checks = await Promise.all(
-      (["admin", "gerente", "direcao"] as const).map((role) =>
+      (["admin", "gerente", "direcao", "lider"] as const).map((role) =>
         context.supabase.rpc("has_role", { _user_id: context.userId, _role: role }),
       ),
     );
     if (!checks.some((c: any) => c.data)) throw new Error("Forbidden");
-    const [isAdminRole] = checks.map((c: any) => c.data);
+    const [isAdminRole, , , isLiderOnlyCheck] = checks.map((c: any) => c.data);
     const hasTodosScope = me?.attraction === "TODOS" || me?.negocio === "TODOS";
     const seesAll = isAdminRole || hasTodosScope;
+    // líder comum (sem gerente/direção) só vê o próprio time — mesma regra
+    // usada na Bússola/check-in do time: só quem lidera direto (manager_id/
+    // co_leader_id), agrupado por pessoa em vez de setor/casa inteira.
+    const isLiderOnly = isLiderOnlyCheck && !seesAll && !checks[1]?.data && !checks[2]?.data;
 
     const { data: profiles } = await supabaseAdmin
       .from("profiles")
-      .select("id, attraction, setor")
+      .select("id, full_name, attraction, setor, manager_id, co_leader_id")
       .eq("active", true)
       .not("attraction", "is", null)
       .neq("attraction", "TODOS");
-    const scoped = seesAll ? (profiles ?? []) : (profiles ?? []).filter((p) => p.attraction === me?.attraction);
-    // grupo: casa a casa (visão geral) ou setor a setor (visão de uma casa só)
-    const groupKey = (p: { attraction: string | null; setor: string | null }) =>
-      seesAll ? (p.attraction as string) : ((p.setor as string | null) ?? "Sem setor");
+    const scoped = seesAll
+      ? (profiles ?? [])
+      : isLiderOnly
+        ? (profiles ?? []).filter((p) => p.manager_id === context.userId || p.co_leader_id === context.userId)
+        : (profiles ?? []).filter((p) => p.attraction === me?.attraction);
+    if (isLiderOnly && scoped.length === 0) return { buckets: bucketKeys, series: [] };
+    // grupo: casa a casa (visão geral), setor a setor (uma casa só) ou
+    // pessoa a pessoa (líder comum, time pequeno e já é o escopo final)
+    const groupKey = (p: { attraction: string | null; setor: string | null; full_name?: string | null }) =>
+      seesAll ? (p.attraction as string) : isLiderOnly ? ((p.full_name as string | null) ?? "Sem nome") : ((p.setor as string | null) ?? "Sem setor");
     const groupById = new Map(scoped.map((p) => [p.id as string, groupKey(p as any)]));
     const ids = scoped.map((p) => p.id as string);
     if (ids.length === 0) return { buckets: bucketKeys, series: [] };

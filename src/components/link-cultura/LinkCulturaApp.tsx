@@ -2001,8 +2001,10 @@ export default function LinkCulturaApp() {
       // que é do escopo do próprio gerente dele).
       if (isAdmin || isGerente || isDirecao) {
         gestao.push({ id: "nps-results", label: "Resultados do NPS", icon: Star, desc: "NPS e evolução da sua casa" });
-        gestao.push({ id: "wellbeing-timeline", label: "Evolução do bem-estar", icon: TrendingUp, desc: "Humor médio ao longo do tempo, por área" });
       }
+      // Evolução do bem-estar: sem comentário livre (só humor numérico), então
+      // líder comum também vê — mas escopado só ao próprio time.
+      gestao.push({ id: "wellbeing-timeline", label: "Evolução do bem-estar", icon: TrendingUp, desc: isAdmin || isGerente || isDirecao ? "Humor médio ao longo do tempo, por área" : "Humor médio da sua equipe ao longo do tempo" });
       // Bússola: líder vê o resultado completo de quem lidera direto,
       // gerente/direção da casa inteira, admin de todo mundo.
       gestao.push({ id: "disc-admin", label: "Bússola do time", icon: Compass, desc: "Perfis comportamentais do seu time" });
