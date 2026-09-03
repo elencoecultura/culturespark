@@ -336,8 +336,8 @@ function MoodFace({ n, size = 44 }: { n: number; size?: number }) {
       <circle cx="24" cy="24" r="22" fill={`url(#${gid})`} />
       {n <= 2 && (
         <>
-          <path d="M11 16 L18 18.5" stroke="#1a2891" strokeWidth="2" strokeLinecap="round" opacity="0.55" />
-          <path d="M37 16 L30 18.5" stroke="#1a2891" strokeWidth="2" strokeLinecap="round" opacity="0.55" />
+          <path d="M11 19 L18 15.5" stroke="#1a2891" strokeWidth="2" strokeLinecap="round" opacity="0.55" />
+          <path d="M37 19 L30 15.5" stroke="#1a2891" strokeWidth="2" strokeLinecap="round" opacity="0.55" />
         </>
       )}
       <circle cx="16.5" cy="21" r="2.6" fill="#1a2891" />
