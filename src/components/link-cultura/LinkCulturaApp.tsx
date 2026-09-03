@@ -298,40 +298,88 @@ function StreakRing({ value }: { value: number }) {
   );
 }
 
-// Medidor de energia 1–5 (círculos que preenchem como uma barra)
+// Rostinhos do check-in de energia — a régua antiga era número + palavra
+// ("Firme" no meio, achando neutro, mas o elenco lia como "estou bem
+// firme/forte", ou seja, positivo). Rosto com boca reta no meio não tem
+// essa ambiguidade: é visualmente óbvio que é neutro, não bom nem ruim.
+// Cor segue a mesma rampa vermelho→âmbar→verde já usada nos indicadores
+// de humor em outras telas do app (mesma linguagem visual, não é um
+// emoji genérico).
+const MOOD_FACE_COLOR: Record<number, [string, string]> = {
+  1: ["#ff5c7a", "#e23f60"],
+  2: ["#ff8f66", "#f26f42"],
+  3: ["#ffca55", "#f0ac2c"],
+  4: ["#b8db6b", "#93c246"],
+  5: ["#24d18b", "#14b276"],
+};
+const MOOD_FACE_LABEL: Record<number, string> = {
+  1: "Energia muito baixa",
+  2: "Energia baixa",
+  3: "Energia neutra",
+  4: "Energia boa",
+  5: "Energia ótima",
+};
+
+function MoodFace({ n, size = 44 }: { n: number; size?: number }) {
+  const [c1, c2] = MOOD_FACE_COLOR[n] ?? MOOD_FACE_COLOR[3];
+  const gid = `mood-face-grad-${n}`;
+  // controla a curvatura da boca: arco pra cima (franzido) em 1, reta em 3, sorriso largo em 5.
+  const ctrlY = 20 + n * 4.5; // 1:24.5 · 2:29 · 3:33.5 · 4:38 · 5:42.5
+  return (
+    <svg viewBox="0 0 48 48" width={size} height={size} aria-hidden="true">
+      <defs>
+        <radialGradient id={gid} cx="35%" cy="30%" r="75%">
+          <stop offset="0%" stopColor={c1} />
+          <stop offset="100%" stopColor={c2} />
+        </radialGradient>
+      </defs>
+      <circle cx="24" cy="24" r="22" fill={`url(#${gid})`} />
+      {n <= 2 && (
+        <>
+          <path d="M11 16 L18 18.5" stroke="#1a2891" strokeWidth="2" strokeLinecap="round" opacity="0.55" />
+          <path d="M37 16 L30 18.5" stroke="#1a2891" strokeWidth="2" strokeLinecap="round" opacity="0.55" />
+        </>
+      )}
+      <circle cx="16.5" cy="21" r="2.6" fill="#1a2891" />
+      <circle cx="31.5" cy="21" r="2.6" fill="#1a2891" />
+      <path
+        d={`M15 30 Q24 ${ctrlY} 33 30`}
+        fill="none"
+        stroke="#1a2891"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      {n === 5 && (
+        <path
+          d="M39 9 L40.3 12 L43.3 12.6 L41 14.8 L41.6 17.8 L39 16.2 L36.4 17.8 L37 14.8 L34.7 12.6 L37.7 12 Z"
+          fill="#fff6d6"
+        />
+      )}
+    </svg>
+  );
+}
+
+// Medidor de energia 1–5 com rostinhos em vez de número + palavra.
 function EnergyScale({ value, onChange }: { value: number | null; onChange: (n: number) => void }) {
-  const MOODS = [
-    { n: 1, label: "Baixo" },
-    { n: 2, label: "Frágil" },
-    { n: 3, label: "Firme" },
-    { n: 4, label: "Bem" },
-    { n: 5, label: "Voando" },
-  ];
   return (
     <div className="mt-5 flex items-end justify-between gap-1.5">
-      {MOODS.map((mo) => {
-        const active = value === mo.n;
-        const filled = value != null && mo.n <= value;
+      {[1, 2, 3, 4, 5].map((n) => {
+        const active = value === n;
         return (
           <button
-            key={mo.n}
-            onClick={() => onChange(mo.n)}
+            key={n}
+            onClick={() => onChange(n)}
             className="flex flex-1 flex-col items-center gap-1.5"
-            aria-label={`${mo.n} — ${mo.label}`}
+            aria-label={MOOD_FACE_LABEL[n]}
           >
             <span
               className={cn(
-                "grid place-items-center rounded-full font-display font-black transition-all duration-200",
-                active
-                  ? "h-12 w-12 scale-105 bg-white text-blu shadow-glow ring-2 ring-celeste/70"
-                  : filled
-                    ? "h-11 w-11 bg-white/45 text-white"
-                    : "glass-chip h-11 w-11 text-white/70",
+                "grid place-items-center rounded-full transition-all duration-200",
+                active ? "scale-110 shadow-glow ring-2 ring-white/70" : "opacity-70",
               )}
             >
-              {mo.n}
+              <MoodFace n={n} size={active ? 50 : 42} />
             </span>
-            <span className={cn("text-[10px] font-medium leading-none", active ? "text-white" : "text-white/60")}>{mo.label}</span>
           </button>
         );
       })}
