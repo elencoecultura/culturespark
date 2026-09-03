@@ -734,11 +734,14 @@ function LevelRing({ level, pct }: { level: number; pct: number }) {
 function LeaderCheckinPanel({ isAdmin }: { isAdmin: boolean }) {
   const [attraction, setAttraction] = useState<string>("");
   const [query, setQuery] = useState("");
+  const [date, setDate] = useState<string>("");
   const fn = useServerFn(listTodayCheckins);
   const { data } = useQuery({
-    queryKey: ["leader-checkins", attraction || "all"],
-    queryFn: () => fn({ data: { attraction: attraction || null } }),
+    queryKey: ["leader-checkins", attraction || "all", date || "today"],
+    queryFn: () => fn({ data: { attraction: attraction || null, date: date || undefined } }),
   });
+  const isToday = !date || (data && data.day === data.today);
+  const dayLabel = data?.day ? new Date(data.day + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "hoje";
 
   const rows = useMemo(() => {
     const all = data?.rows ?? [];
@@ -754,7 +757,7 @@ function LeaderCheckinPanel({ isAdmin }: { isAdmin: boolean }) {
     <div className="mt-5 grid gap-3">
       <div className="grid grid-cols-3 gap-2">
         <GlassCard variant="glass" className="p-3">
-          <div className="text-[10px] uppercase tracking-[0.14em] text-white/60">Hoje</div>
+          <div className="text-[10px] uppercase tracking-[0.14em] text-white/60">{isToday ? "Hoje" : dayLabel}</div>
           <div className="mt-1 font-display text-[22px] font-black text-white">{total}</div>
           <div className="text-[11px] text-white/65">no elenco</div>
         </GlassCard>
@@ -777,6 +780,27 @@ function LeaderCheckinPanel({ isAdmin }: { isAdmin: boolean }) {
           placeholder="Buscar por nome"
           className="glass-input rounded-2xl px-4 py-3 text-[13.5px] text-white outline-none placeholder:text-white/40"
         />
+        <div className="flex items-center gap-2">
+          <label className="glass-input flex flex-1 items-center gap-2 rounded-2xl px-4 py-3 text-[13px] text-white">
+            <CalendarDays size={15} className="shrink-0 text-white/60" />
+            <input
+              type="date"
+              value={date || data?.today || ""}
+              max={data?.today}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full bg-transparent outline-none [color-scheme:dark]"
+            />
+          </label>
+          {!isToday && (
+            <button
+              type="button"
+              onClick={() => setDate("")}
+              className="glass-chip shrink-0 rounded-2xl px-3 py-3 text-[12px] font-semibold text-white/80"
+            >
+              Hoje
+            </button>
+          )}
+        </div>
         {isAdmin && (
           <select
             value={attraction}
@@ -799,7 +823,7 @@ function LeaderCheckinPanel({ isAdmin }: { isAdmin: boolean }) {
                 <div className="truncate text-[11.5px] uppercase tracking-[0.12em] text-white/55">{r.attraction || "—"}</div>
                 {r.absent && (
                   <div className="mt-2 text-[12px] text-pink">
-                    Falta hoje{r.absence_reason ? ` · ${r.absence_reason}` : ""}
+                    Falta {isToday ? "hoje" : `em ${dayLabel}`}{r.absence_reason ? ` · ${r.absence_reason}` : ""}
                     {r.absence_url && (
                       <a href={r.absence_url} target="_blank" rel="noopener noreferrer" className="ml-2 inline-flex items-center gap-1 font-semibold text-celeste underline-offset-4 hover:underline">
                         Ver anexo <ChevronRight size={12} />

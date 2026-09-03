@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { addDaysToKey, todayKey } from "@/lib/date-buckets";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida");
 
@@ -119,7 +120,9 @@ export const copyPreviousWeek = createServerFn({ method: "POST" })
 
 export const listTodayCheckins = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d) => z.object({ attraction: z.string().optional().nullable() }).parse(d))
+  .inputValidator((d) =>
+    z.object({ attraction: z.string().optional().nullable(), date: isoDate.optional() }).parse(d),
+  )
   .handler(async ({ data, context }) => {
     // Qualquer papel de liderança pode ver os check-ins — antes só "admin" e
     // "leader" passavam, deixando gerente/líder ("lider")/direção de fora
@@ -163,24 +166,27 @@ export const listTodayCheckins = createServerFn({ method: "POST" })
     const { data: people, error } = await q;
     if (error) throw new Error(error.message);
 
-    const tz = "America/Sao_Paulo";
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: tz });
-    const startUtc = new Date(`${today}T00:00:00-03:00`).toISOString();
+    const today = todayKey();
+    // Data pedida pelo líder (histórico) — nunca no futuro.
+    const day = data.date && data.date <= today ? data.date : today;
+    const startUtc = `${day}T00:00:00-03:00`;
+    const endUtc = `${addDaysToKey(day, 1)}T00:00:00-03:00`;
 
     const ids = (people ?? []).map((p) => p.id);
-    if (!ids.length) return { today, rows: [] };
+    if (!ids.length) return { today, day, rows: [] };
 
     const { data: checkins } = await supabaseAdmin
       .from("mood_checkins")
       .select("user_id, created_at, mood")
       .in("user_id", ids)
-      .gte("created_at", startUtc);
+      .gte("created_at", startUtc)
+      .lt("created_at", endUtc);
 
     const { data: absences } = await supabaseAdmin
       .from("journey_absences")
       .select("user_id, reason, attachment_path, absence_date")
       .in("user_id", ids)
-      .eq("absence_date", today);
+      .eq("absence_date", day);
 
     const checkinByUser = new Map<string, { created_at: string; mood: number }>();
     (checkins ?? []).forEach((c) => {
@@ -230,6 +236,6 @@ export const listTodayCheckins = createServerFn({ method: "POST" })
         return a.name.localeCompare(b.name);
       });
 
-    return { today, rows };
+    return { today, day, rows };
   });
 
