@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { fetchAllRows } from "@/lib/db-pagination";
 
 const POINT_LABELS: Record<string, string> = {
   checkin: "Check-in de humor",
@@ -270,15 +271,19 @@ export const getGamificationAnalytics = createServerFn({ method: "POST" })
       // usa o client de service role pra não perder os eventos de quem não
       // é o próprio caller.
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      // .limit() explícito: sem ele o Supabase corta em 1000 linhas por
-      // padrão, e a tabela inteira já passa disso — sem filtro de data
-      // metade dos eventos some da consulta sem erro nenhum.
-      let q = supabaseAdmin.from("point_events").select("user_id, points, kind, created_at").limit(50000);
-      if (data.from) q = q.gte("created_at", data.from);
-      if (data.to) q = q.lt("created_at", data.to);
-      if (data.kind) q = q.eq("kind", data.kind);
-      const { data: evs, error } = await q;
-      if (error) throw new Error(error.message);
+      // O Supabase tem um teto de 1000 linhas por requisição no servidor —
+      // .limit() no cliente só pede MENOS, nunca mais. A tabela inteira já
+      // passa disso, então sem paginar de verdade metade dos eventos some
+      // da consulta sem erro nenhum.
+      const evs = await fetchAllRows<{ user_id: string; points: number; kind: string; created_at: string }>(
+        (from, to) => {
+          let q = supabaseAdmin.from("point_events").select("user_id, points, kind, created_at");
+          if (data.from) q = q.gte("created_at", data.from);
+          if (data.to) q = q.lt("created_at", data.to);
+          if (data.kind) q = q.eq("kind", data.kind);
+          return q.range(from, to);
+        },
+      );
       rows = (evs ?? []).map((e) => ({
         user_id: e.user_id as string,
         points: (e.points as number) ?? 0,

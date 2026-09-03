@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { SUPREME_EMAILS } from "@/lib/wellbeing.functions";
 import { PERIODS, resolveDateBuckets } from "@/lib/date-buckets";
+import { fetchAllRows } from "@/lib/db-pagination";
 
 function avgSeries(bucketKeys: string[], entries: Array<{ key: string; mood: number }>) {
   const sums = new Map<string, number>();
@@ -92,17 +93,19 @@ export const getWellbeingTimeline = createServerFn({ method: "GET" })
     const ids = scoped.map((p) => p.id as string);
     if (ids.length === 0) return { buckets: bucketKeys, series: [] };
 
-    // .limit() explícito: sem ele o Supabase corta em 1000 linhas por
-    // padrão — "Ano" com todo mundo passa disso fácil e a média sai
+    // Paginado de verdade: o Supabase tem um teto de 1000 linhas por
+    // requisição no servidor — .limit() no cliente só pede MENOS, nunca
+    // mais. "Ano" com todo mundo passa fácil disso e a média saía
     // incompleta sem nenhum erro aparecer.
-    const { data: moods, error } = await context.supabase
-      .from("mood_checkins")
-      .select("user_id, mood, created_at")
-      .in("user_id", ids)
-      .gte("created_at", sinceIso)
-      .lt("created_at", untilIso)
-      .limit(50000);
-    if (error) throw new Error(error.message);
+    const moods = await fetchAllRows<{ user_id: string; mood: number; created_at: string }>((from, to) =>
+      context.supabase
+        .from("mood_checkins")
+        .select("user_id, mood, created_at")
+        .in("user_id", ids)
+        .gte("created_at", sinceIso)
+        .lt("created_at", untilIso)
+        .range(from, to),
+    );
 
     const byGroup = new Map<string, Array<{ key: string; mood: number }>>();
     for (const m of moods ?? []) {

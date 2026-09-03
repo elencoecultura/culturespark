@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { fetchAllRows } from "@/lib/db-pagination";
 
 export const POINT_RULES = [
   { kind: "checkin", label: "Check-in de humor", points: 5, hint: "1x por dia" },
@@ -186,18 +187,16 @@ export const getAttractionLeaderboard = createServerFn({ method: "POST" })
     // mundo da atração, então usa o client de service role aqui. Sem isso,
     // cada pessoa via só os PRÓPRIOS pontos e todo mundo se achava em
     // 1º lugar (todos os outros apareciam zerados pra ela).
-    // .limit() explícito: sem ele o Supabase corta em 1000 linhas por
-    // padrão — o "geral" (todo mundo, ciclo de 60 dias) passa fácil disso
-    // e gente com pontos reais aparecia zerada, dependendo da ordem que as
-    // linhas voltavam do banco.
-    let evQuery = supabaseAdmin
-      .from("point_events")
-      .select("user_id, points")
-      .in("user_id", ids)
-      .limit(20000);
-    if (cycle.start) evQuery = evQuery.gte("created_at", cycle.start);
-    if (cycle.end) evQuery = evQuery.lt("created_at", cycle.end);
-    const { data: events } = await evQuery;
+    // O Supabase tem um teto de 1000 linhas por requisição no servidor —
+    // .limit() no cliente só pede MENOS que isso, nunca mais. O "geral"
+    // (todo mundo, ciclo de 60 dias) passa fácil de 1000 eventos, e sem
+    // paginar de verdade gente com pontos reais aparecia zerada.
+    const events = await fetchAllRows<{ user_id: string; points: number }>((from, to) => {
+      let q = supabaseAdmin.from("point_events").select("user_id, points").in("user_id", ids);
+      if (cycle.start) q = q.gte("created_at", cycle.start);
+      if (cycle.end) q = q.lt("created_at", cycle.end);
+      return q.range(from, to);
+    });
 
     const sums = new Map<string, number>();
     (events ?? []).forEach((e) => {

@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { PERIODS, resolveDateBuckets, todayKey } from "@/lib/date-buckets";
+import { fetchAllRows } from "@/lib/db-pagination";
 
 async function assertAdmin(supabase: any, userId: string) {
   const { data } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
@@ -75,19 +76,24 @@ export const getCheckinsByHouse = createServerFn({ method: "GET" })
     });
     const houses = Object.keys(headcount).sort();
 
-    // .limit() explícito em todas: sem ele o Supabase corta em 1000 linhas
-    // por padrão — período "Ano" com ~100 pessoas passa disso fácil e os
-    // números saem incompletos sem nenhum erro aparecer.
-    const [{ data: checkins, error: cErr }, { data: moodsInPeriod, error: mErr }, { data: kudosInPeriod, error: kErr }, { data: lowEnergyInPeriod }] =
-      await Promise.all([
-        supabaseAdmin.from("mood_checkins").select("user_id, mood, created_at").gte("created_at", sinceIso).lt("created_at", untilIso).limit(50000),
-        supabaseAdmin.from("mood_checkins").select("user_id, mood").gte("created_at", sinceIso).lt("created_at", untilIso).limit(50000),
-        supabaseAdmin.from("kudos").select("from_user, to_user").gte("created_at", sinceIso).lt("created_at", untilIso).limit(50000),
-        supabaseAdmin.from("low_energy_alerts").select("user_id").gte("triggered_at", sinceIso).lt("triggered_at", untilIso).limit(50000),
-      ]);
-    if (cErr) throw new Error(cErr.message);
-    if (mErr) throw new Error(mErr.message);
-    if (kErr) throw new Error(kErr.message);
+    // Paginado de verdade (fetchAllRows/.range()) em todas: o Supabase tem
+    // um teto de 1000 linhas por requisição no servidor, e .limit() no
+    // cliente só pede MENOS que isso, nunca mais — período "Ano" com ~100
+    // pessoas passa fácil de 1000 linhas em cada uma dessas tabelas.
+    const [checkins, moodsInPeriod, kudosInPeriod, lowEnergyInPeriod] = await Promise.all([
+      fetchAllRows<{ user_id: string; mood: number; created_at: string }>((from, to) =>
+        supabaseAdmin.from("mood_checkins").select("user_id, mood, created_at").gte("created_at", sinceIso).lt("created_at", untilIso).range(from, to),
+      ),
+      fetchAllRows<{ user_id: string; mood: number }>((from, to) =>
+        supabaseAdmin.from("mood_checkins").select("user_id, mood").gte("created_at", sinceIso).lt("created_at", untilIso).range(from, to),
+      ),
+      fetchAllRows<{ from_user: string; to_user: string }>((from, to) =>
+        supabaseAdmin.from("kudos").select("from_user, to_user").gte("created_at", sinceIso).lt("created_at", untilIso).range(from, to),
+      ),
+      fetchAllRows<{ user_id: string }>((from, to) =>
+        supabaseAdmin.from("low_energy_alerts").select("user_id").gte("triggered_at", sinceIso).lt("triggered_at", untilIso).range(from, to),
+      ),
+    ]);
 
     // matriz casa x dia = quem fez check-in (deduplicado por pessoa/dia) +
     // matriz casa x setor x dia (pro detalhe por setor)
