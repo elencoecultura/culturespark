@@ -7,7 +7,7 @@ export const listNotifications = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data: notifs, error } = await context.supabase
       .from("notifications")
-      .select("id, title, body, created_at, created_by")
+      .select("id, title, body, created_at, created_by, category")
       .order("created_at", { ascending: false })
       .limit(50);
     if (error) throw new Error(error.message);
@@ -18,7 +18,37 @@ export const listNotifications = createServerFn({ method: "GET" })
       .eq("user_id", context.userId);
     const readSet = new Set((reads ?? []).map((r) => r.notification_id));
 
-    const items = (notifs ?? []).map((n) => ({ ...n, read: readSet.has(n.id) }));
+    // O lembrete de NPS é um recado geral (user_id null, vai pra todo mundo)
+    // — mas quem já respondeu a pesquisa ativa não deve continuar vendo
+    // "ainda dá tempo de responder". Filtra na leitura em vez de mandar um
+    // recado por pessoa.
+    const hasNpsReminder = (notifs ?? []).some((n) => (n.category as string | null)?.startsWith("nps_reminder"));
+    let hasAnsweredActive = false;
+    if (hasNpsReminder) {
+      const nowIso = new Date().toISOString();
+      const { data: activeSurvey } = await context.supabase
+        .from("nps_surveys")
+        .select("id")
+        .eq("active", true)
+        .lte("opens_at", nowIso)
+        .gte("closes_at", nowIso)
+        .order("opens_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (activeSurvey) {
+        const { data: myResponse } = await context.supabase
+          .from("nps_responses")
+          .select("id")
+          .eq("survey_id", activeSurvey.id)
+          .eq("user_id", context.userId)
+          .maybeSingle();
+        hasAnsweredActive = !!myResponse;
+      }
+    }
+
+    const items = (notifs ?? [])
+      .filter((n) => !(hasAnsweredActive && (n.category as string | null)?.startsWith("nps_reminder")))
+      .map((n) => ({ ...n, read: readSet.has(n.id) }));
     const unread = items.filter((n) => !n.read).length;
     return { items, unread };
   });
