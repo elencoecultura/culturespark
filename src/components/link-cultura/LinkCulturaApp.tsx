@@ -70,7 +70,7 @@ import { listAllowedIps, addAllowedIp, removeAllowedIp, listBypassUsers, setWifi
 import PreRegistrationsAdmin from "./PreRegistrationsAdmin";
 import GamificationCycleAdmin from "./GamificationCycleAdmin";
 import GamificationAnalyticsAdmin from "./GamificationAnalyticsAdmin";
-import { BusinessProvider } from "./BusinessContext";
+import { BusinessProvider, useBusiness } from "./BusinessContext";
 import BusinessSelector from "./BusinessSelector";
 import { getDailyPhrase, getPillar } from "@/lib/culture-content";
 import { NotificationsBell, BroadcastAdminScreen, NpsResultsScreen } from "./Notifications";
@@ -1677,12 +1677,13 @@ function BirthdaysScreen({ myUserId }: { myUserId: string }) {
 }
 
 function GamificationScreen({ myUserId }: { myUserId: string }) {
+  const { business, canSelect } = useBusiness();
   const myFn = useServerFn(getMyGamification);
   const lbFn = useServerFn(getAttractionLeaderboard);
   const { data: me } = useQuery({ queryKey: ["gamification", "me"], queryFn: () => myFn() });
   const { data: lb } = useQuery({
-    queryKey: ["gamification", "leaderboard", me?.attraction ?? ""],
-    queryFn: () => lbFn({ data: {} }),
+    queryKey: ["gamification", "leaderboard", canSelect ? business || "TODOS" : (me?.attraction ?? "")],
+    queryFn: () => lbFn({ data: canSelect ? { attraction: business || "TODOS" } : {} }),
     enabled: !!me,
   });
 
@@ -1730,13 +1731,13 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         <MetricCard label="Temporada" value={String(seasonXp)} sub={`${daysToReset}d pro reset`} icon={Star} variant="pink" />
-        <MetricCard label="Posição" value={myRank > 0 ? `#${myRank}` : "—"} sub={me?.attraction ?? "sem atração"} icon={TrendingUp} variant="blue" />
+        <MetricCard label="Posição" value={myRank > 0 ? `#${myRank}` : "—"} sub={lb?.attraction === "TODOS" ? "geral" : (lb?.attraction ?? me?.attraction ?? "sem atração")} icon={TrendingUp} variant="blue" />
         <MetricCard label="Sequência" value={`${streak}d`} sub="check-ins seguidos" icon={Flame} />
         <MetricCard label="Semanas 100%" value={String(weeksFull)} sub="escala cumprida" icon={Medal} />
       </div>
 
       <div className="mt-6">
-        <SectionTitle>Pódio da {me?.attraction ?? "atração"}</SectionTitle>
+        <SectionTitle>{lb?.attraction === "TODOS" ? "Pódio geral" : `Pódio da ${lb?.attraction ?? me?.attraction ?? "atração"}`}</SectionTitle>
         {(!lb || lb.rows.length === 0) && <Notice>Ainda sem pontos nesta atração. Bora começar.</Notice>}
         {podium.length > 0 && (
           <div className="grid gap-2">

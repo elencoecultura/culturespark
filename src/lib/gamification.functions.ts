@@ -164,26 +164,28 @@ export const getAttractionLeaderboard = createServerFn({ method: "POST" })
       .eq("id", context.userId)
       .maybeSingle();
     // Só quem enxerga tudo (TODOS) ou admin pode pedir a atração de outra
-    // pessoa — todo mundo mais sempre vê a própria, mesmo que peça outra.
+    // pessoa (ou nenhuma — "" / "TODOS" vira ranking geral, casa nenhuma
+    // filtrada) — todo mundo mais sempre vê a própria, ignorando qualquer
+    // atração que peça.
     const { data: isAdmin } = await context.supabase.rpc("has_role", { _user_id: context.userId, _role: "admin" });
     const hasTodosScope = me?.attraction === "TODOS" || me?.negocio === "TODOS";
-    const attraction = (isAdmin || hasTodosScope ? data.attraction : null) ?? me?.attraction ?? null;
-    if (!attraction) return { attraction: null, season, rows: [] };
+    const seesAll = isAdmin || hasTodosScope;
+    const attraction = seesAll ? (data.attraction || null) : (me?.attraction ?? null);
+    const isOverall = seesAll && (!data.attraction || data.attraction === "TODOS");
+    if (!seesAll && !attraction) return { attraction: null, season, rows: [] };
 
-    const { data: profiles } = await context.supabase
-      .from("profiles")
-      .select("id, full_name, attraction")
-      .eq("attraction", attraction)
-      .eq("active", true);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    let profilesQuery = supabaseAdmin.from("profiles").select("id, full_name, attraction").eq("active", true);
+    if (!isOverall) profilesQuery = profilesQuery.eq("attraction", attraction ?? "__none__");
+    const { data: profiles } = await profilesQuery;
     const ids = (profiles ?? []).map((p) => p.id);
-    if (ids.length === 0) return { attraction, season, rows: [] };
+    if (ids.length === 0) return { attraction: isOverall ? "TODOS" : attraction, season, rows: [] };
 
     // RLS de point_events só libera ver os próprios eventos (fora
     // admin/líder de verdade) — pro ranking precisa ver o ponto de todo
     // mundo da atração, então usa o client de service role aqui. Sem isso,
     // cada pessoa via só os PRÓPRIOS pontos e todo mundo se achava em
     // 1º lugar (todos os outros apareciam zerados pra ela).
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     let evQuery = supabaseAdmin
       .from("point_events")
       .select("user_id, points")
@@ -199,7 +201,7 @@ export const getAttractionLeaderboard = createServerFn({ method: "POST" })
     const rows = (profiles ?? [])
       .map((p) => ({ user_id: p.id, name: p.full_name, points: sums.get(p.id) ?? 0 }))
       .sort((a, b) => b.points - a.points);
-    return { attraction, season, rows };
+    return { attraction: isOverall ? "TODOS" : attraction, season, rows };
   });
 
 export const markScheduleCompleted = createServerFn({ method: "POST" })
