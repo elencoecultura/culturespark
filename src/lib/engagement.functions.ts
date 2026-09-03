@@ -283,7 +283,52 @@ export const listKudos = createServerFn({ method: "GET" })
       .order("created_at", { ascending: false })
       .limit(30);
     if (error) throw new Error(error.message);
-    return data ?? [];
+    const rows = data ?? [];
+
+    const ids = rows.map((r) => r.id as string);
+    const { data: likes } = ids.length
+      ? await context.supabase.from("kudos_likes").select("kudos_id, user_id").in("kudos_id", ids)
+      : { data: [] as Array<{ kudos_id: string; user_id: string }> };
+
+    const countByKudos = new Map<string, number>();
+    const likedByMe = new Set<string>();
+    (likes ?? []).forEach((l) => {
+      countByKudos.set(l.kudos_id, (countByKudos.get(l.kudos_id) ?? 0) + 1);
+      if (l.user_id === context.userId) likedByMe.add(l.kudos_id);
+    });
+
+    return rows.map((r) => ({
+      ...r,
+      like_count: countByKudos.get(r.id as string) ?? 0,
+      liked_by_me: likedByMe.has(r.id as string),
+    }));
+  });
+
+// Curtir/descurtir um elogio (toggle) — só reação, sem comentário. Só quem
+// mandou ou recebeu aquele elogio pode curtir (mesma regra de visibilidade
+// do elogio em si, garantida pela própria RLS de kudos_likes).
+export const toggleKudosLike = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ kudos_id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: existing } = await context.supabase
+      .from("kudos_likes")
+      .select("id")
+      .eq("kudos_id", data.kudos_id)
+      .eq("user_id", context.userId)
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await context.supabase.from("kudos_likes").delete().eq("id", existing.id);
+      if (error) throw new Error(error.message);
+      return { liked: false };
+    }
+
+    const { error } = await context.supabase
+      .from("kudos_likes")
+      .insert({ kudos_id: data.kudos_id, user_id: context.userId });
+    if (error) throw new Error(error.message);
+    return { liked: true };
   });
 
 // Admin/RH: elogios sinalizados pela moderação leve, pra revisão.

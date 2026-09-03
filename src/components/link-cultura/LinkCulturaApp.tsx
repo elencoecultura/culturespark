@@ -43,7 +43,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { confirmAction } from "@/lib/confirm";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { submitMood, listMyMoods, sendKudos, listKudos, listColleagues, leaderOverview } from "@/lib/engagement.functions";
+import { submitMood, listMyMoods, sendKudos, listKudos, toggleKudosLike, listColleagues, leaderOverview } from "@/lib/engagement.functions";
 import { listWeekBirthdays } from "@/lib/birthdays.functions";
 import { getDiscStatus } from "@/lib/disc.functions";
 import Bussola, { BussolaAdmin } from "./Bussola";
@@ -627,6 +627,26 @@ function FeedbackScreen({ canSend }: { canSend: boolean }) {
   const { data: people } = useQuery({ queryKey: ["colleagues"], queryFn: () => colleaguesFn() });
   const kudosFn = useServerFn(listKudos);
   const { data: kudos } = useQuery({ queryKey: ["kudos"], queryFn: () => kudosFn() });
+  const likeFn = useServerFn(toggleKudosLike);
+  const like = useMutation({
+    mutationFn: (kudos_id: string) => likeFn({ data: { kudos_id } }),
+    onMutate: async (kudos_id: string) => {
+      await qc.cancelQueries({ queryKey: ["kudos"] });
+      const prev = qc.getQueryData<any[]>(["kudos"]);
+      qc.setQueryData<any[]>(["kudos"], (old) =>
+        (old ?? []).map((k) =>
+          k.id === kudos_id
+            ? { ...k, liked_by_me: !k.liked_by_me, like_count: k.like_count + (k.liked_by_me ? -1 : 1) }
+            : k,
+        ),
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["kudos"], ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["kudos"] }),
+  });
 
   const send = useServerFn(sendKudos);
   const m = useMutation({
@@ -697,7 +717,20 @@ function FeedbackScreen({ canSend }: { canSend: boolean }) {
                 de {nameById.get(k.from_user) ?? "alguém"} → {nameById.get(k.to_user) ?? "alguém"}
               </div>
               <div className="mt-2 text-[14px] text-white">{k.message}</div>
-              <div className="mt-2 text-[11px] text-white/45">{new Date(k.created_at).toLocaleString("pt-BR")}</div>
+              <div className="mt-2.5 flex items-center justify-between">
+                <div className="text-[11px] text-white/45">{new Date(k.created_at).toLocaleString("pt-BR")}</div>
+                <button
+                  onClick={() => like.mutate(k.id)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition active:scale-95",
+                    k.liked_by_me ? "bg-pink/25 text-pink" : "glass-chip text-white/70",
+                  )}
+                  aria-label={k.liked_by_me ? "Descurtir" : "Curtir"}
+                >
+                  <Heart size={14} className={k.liked_by_me ? "fill-pink" : ""} />
+                  {k.like_count > 0 && k.like_count}
+                </button>
+              </div>
             </GlassCard>
           ))}
         </div>

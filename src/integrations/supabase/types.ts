@@ -721,6 +721,35 @@ export type Database = {
         }
         Relationships: []
       }
+      kudos_likes: {
+        Row: {
+          created_at: string
+          id: string
+          kudos_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kudos_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kudos_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kudos_likes_kudos_id_fkey"
+            columns: ["kudos_id"]
+            isOneToOne: false
+            referencedRelation: "kudos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       low_energy_alerts: {
         Row: {
           id: string
