@@ -227,6 +227,29 @@ export const sendKudos = createServerFn({ method: "POST" })
       if (sentToday >= KUDOS_PER_DAY_LIMIT) {
         throw new Error(`Você já mandou ${KUDOS_PER_DAY_LIMIT} elogios hoje — volta amanhã pra mandar mais.`);
       }
+
+      // Cooldown de 7 dias pro MESMO destinatário — evita gente repetindo o
+      // elogio pra mesma pessoa todo dia só pra pontuar (aniversário fica de
+      // fora, já tem a própria regra de 1x/ano acima).
+      const KUDOS_SAME_PERSON_COOLDOWN_DAYS = 7;
+      const cooldownSince = new Date(Date.now() - KUDOS_SAME_PERSON_COOLDOWN_DAYS * 86_400_000).toISOString();
+      // Mesmo cuidado do filtro acima: .neq() no Postgres exclui category
+      // NULL junto (elogio normal sempre tem category null), então filtra
+      // "aniversario" em JS, não na query.
+      const { data: recentToSamePerson } = await context.supabase
+        .from("kudos")
+        .select("created_at, category")
+        .eq("from_user", context.userId)
+        .eq("to_user", data.to_user)
+        .gte("created_at", cooldownSince)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      const lastToSamePerson = (recentToSamePerson ?? []).find((r) => r.category !== "aniversario");
+      if (lastToSamePerson) {
+        const nextAt = new Date(new Date(lastToSamePerson.created_at as string).getTime() + KUDOS_SAME_PERSON_COOLDOWN_DAYS * 86_400_000);
+        const nextLabel = nextAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "America/Sao_Paulo" });
+        throw new Error(`Você já elogiou essa pessoa nos últimos ${KUDOS_SAME_PERSON_COOLDOWN_DAYS} dias — pode mandar de novo a partir de ${nextLabel}.`);
+      }
     } else {
       // Elogio de aniversário: livre da contagem diária, mas só 1 por
       // aniversariante (janela de ~300 dias — cobre "o ano do aniversário
