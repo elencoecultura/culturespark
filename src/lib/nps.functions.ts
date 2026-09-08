@@ -100,7 +100,10 @@ async function ensureMonthlyNpsCadence(context: { supabase: any }) {
 export const getActiveNpsSurvey = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    await ensureMonthlyNpsCadence(context);
+    // Cadência automática mensal desligada — pesquisa de NPS surgindo sozinha
+    // todo dia 1 pegava o elenco de surpresa. Quem cria uma pesquisa agora é
+    // sempre uma pessoa, explicitamente (ver createNpsSurvey mais abaixo).
+    // A função ensureMonthlyNpsCadence continua no arquivo, só não é chamada.
     const nowIso = new Date().toISOString();
     const { data: survey } = await context.supabase
       .from("nps_surveys")
