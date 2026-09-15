@@ -544,7 +544,12 @@ function InstallBanner({ go }: { go: (id: TabId) => void }) {
 function HomeScreen({ name, go, isAdmin, isLeader }: { name: string; go: (id: TabId) => void; isAdmin: boolean; isLeader: boolean }) {
   const fn = useServerFn(listMyMoods);
   const { data: moods } = useQuery({ queryKey: ["moods", "me"], queryFn: () => fn() });
-  const streak = moods?.length ?? 0;
+  // streak de verdade (respeita folga da escala) — moods.length aqui é só a
+  // quantidade de linhas de uma consulta limitada a 14, travava pra sempre
+  // em 14 assim que a pessoa passava desse total de check-ins na vida.
+  const gamFn = useServerFn(getMyGamification);
+  const { data: gam } = useQuery({ queryKey: ["gamification", "me"], queryFn: () => gamFn() });
+  const streak = gam?.streak ?? 0;
   const todayKey = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
   const doneToday = !!moods?.[0] && new Date(moods[0].created_at).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }) === todayKey;
   const phrase = getDailyPhrase();
