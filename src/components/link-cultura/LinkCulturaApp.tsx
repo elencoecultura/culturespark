@@ -773,10 +773,14 @@ function LeaderCheckinPanel({ isAdmin }: { isAdmin: boolean }) {
   const [attraction, setAttraction] = useState<string>("");
   const [query, setQuery] = useState("");
   const [date, setDate] = useState<string>("");
+  // Admin/gerente/direção normalmente veem todo mundo — "Meu time" deixa
+  // filtrar só quem a pessoa lidera direto (manager_id/co_leader_id), útil
+  // pra quem acumula um papel maior mas também lidera um time pequeno.
+  const [mineOnly, setMineOnly] = useState(false);
   const fn = useServerFn(listTodayCheckins);
   const { data } = useQuery({
-    queryKey: ["leader-checkins", attraction || "all", date || "today"],
-    queryFn: () => fn({ data: { attraction: attraction || null, date: date || undefined } }),
+    queryKey: ["leader-checkins", mineOnly ? "mine" : attraction || "all", date || "today"],
+    queryFn: () => fn({ data: { attraction: attraction || null, date: date || undefined, mineOnly } }),
   });
   const isToday = !date || (data && data.day === data.today);
   const dayLabel = data?.day ? new Date(data.day + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "hoje";
@@ -840,6 +844,30 @@ function LeaderCheckinPanel({ isAdmin }: { isAdmin: boolean }) {
           )}
         </div>
         {isAdmin && (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setMineOnly(false)}
+              className={cn(
+                "flex-1 rounded-2xl px-4 py-2.5 text-[12.5px] font-semibold transition",
+                !mineOnly ? "bg-brand-grad text-white" : "glass-chip text-white/70",
+              )}
+            >
+              Todo mundo
+            </button>
+            <button
+              type="button"
+              onClick={() => setMineOnly(true)}
+              className={cn(
+                "flex-1 rounded-2xl px-4 py-2.5 text-[12.5px] font-semibold transition",
+                mineOnly ? "bg-brand-grad text-white" : "glass-chip text-white/70",
+              )}
+            >
+              Meu time
+            </button>
+          </div>
+        )}
+        {isAdmin && !mineOnly && (
           <select
             value={attraction}
             onChange={(e) => setAttraction(e.target.value)}

@@ -121,7 +121,7 @@ export const copyPreviousWeek = createServerFn({ method: "POST" })
 export const listTodayCheckins = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
-    z.object({ attraction: z.string().optional().nullable(), date: isoDate.optional() }).parse(d),
+    z.object({ attraction: z.string().optional().nullable(), date: isoDate.optional(), mineOnly: z.boolean().optional() }).parse(d),
   )
   .handler(async ({ data, context }) => {
     // Qualquer papel de liderança pode ver os check-ins — antes só "admin" e
@@ -156,7 +156,13 @@ export const listTodayCheckins = createServerFn({ method: "POST" })
       .from("profiles")
       .select("id, full_name, attraction, active")
       .eq("active", true);
-    if (seesAll) {
+    // "Meu time": mesmo admin/gerente/direção (que normalmente enxergam
+    // tudo) podem pedir explicitamente só quem lideram direto — útil pra
+    // quem acumula um papel maior mas também lidera um time pequeno
+    // (ex.: sócio que é admin E co-líder de algumas pessoas do Lab).
+    if (data.mineOnly) {
+      q = q.or(`manager_id.eq.${context.userId},co_leader_id.eq.${context.userId}`);
+    } else if (seesAll) {
       if (data.attraction) q = q.eq("attraction", data.attraction);
     } else if (seesWholeAttraction) {
       q = q.eq("attraction", myProfile?.attraction ?? "__none__");
