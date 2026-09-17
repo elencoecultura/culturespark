@@ -38,6 +38,7 @@ export const getWellbeingTimeline = createServerFn({ method: "GET" })
         to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
         mode: z.enum(["individual", "department"]).default("department"),
         user_id: z.string().uuid().optional(),
+        mineOnly: z.boolean().optional(),
       })
       .parse(d ?? {}),
   )
@@ -81,7 +82,7 @@ export const getWellbeingTimeline = createServerFn({ method: "GET" })
     // líder comum (sem gerente/direção) só vê o próprio time — mesma regra
     // usada na Bússola/check-in do time: só quem lidera direto (manager_id/
     // co_leader_id), agrupado por pessoa em vez de setor/casa inteira.
-    const isLiderOnly = isLiderOnlyCheck && !seesAll && !checks[1]?.data && !checks[2]?.data;
+    const isLiderOnly = (isLiderOnlyCheck && !seesAll && !checks[1]?.data && !checks[2]?.data) || !!data.mineOnly;
 
     const { data: profiles } = await supabaseAdmin
       .from("profiles")
@@ -89,16 +90,19 @@ export const getWellbeingTimeline = createServerFn({ method: "GET" })
       .eq("active", true)
       .not("attraction", "is", null)
       .neq("attraction", "TODOS");
-    const scoped = seesAll
-      ? (profiles ?? [])
-      : isLiderOnly
-        ? (profiles ?? []).filter((p) => p.manager_id === context.userId || p.co_leader_id === context.userId)
-        : (profiles ?? []).filter((p) => p.attraction === me?.attraction);
+    const scoped = data.mineOnly
+      ? (profiles ?? []).filter((p) => p.manager_id === context.userId || p.co_leader_id === context.userId)
+      : seesAll
+        ? (profiles ?? [])
+        : isLiderOnly
+          ? (profiles ?? []).filter((p) => p.manager_id === context.userId || p.co_leader_id === context.userId)
+          : (profiles ?? []).filter((p) => p.attraction === me?.attraction);
     if (isLiderOnly && scoped.length === 0) return { buckets: bucketKeys, series: [] };
     // grupo: casa a casa (visão geral), setor a setor (uma casa só) ou
-    // pessoa a pessoa (líder comum, time pequeno e já é o escopo final)
+    // pessoa a pessoa (líder comum ou "meu time" pedido explicitamente,
+    // time pequeno e já é o escopo final)
     const groupKey = (p: { attraction: string | null; setor: string | null; full_name?: string | null }) =>
-      seesAll ? (p.attraction as string) : isLiderOnly ? ((p.full_name as string | null) ?? "Sem nome") : ((p.setor as string | null) ?? "Sem setor");
+      isLiderOnly ? ((p.full_name as string | null) ?? "Sem nome") : seesAll ? (p.attraction as string) : ((p.setor as string | null) ?? "Sem setor");
     const groupById = new Map(scoped.map((p) => [p.id as string, groupKey(p as any)]));
     const ids = scoped.map((p) => p.id as string);
     if (ids.length === 0) return { buckets: bucketKeys, series: [] };

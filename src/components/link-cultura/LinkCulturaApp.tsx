@@ -2110,7 +2110,7 @@ export default function LinkCulturaApp() {
       case "analytics": return <GamificationAnalyticsAdmin />;
       case "broadcast": return <BroadcastAdminScreen />;
       case "nps-results": return <NpsResultsScreen />;
-      case "wellbeing-timeline": return <WellbeingTimelineScreen />;
+      case "wellbeing-timeline": return <WellbeingTimelineScreen isAdmin={isAdmin} />;
       default: return <HomeScreen name={name} go={setTab} isAdmin={isAdmin} isLeader={isLeader} />;
     }
   }, [tab, isLeader, isAdmin, isLoading, profile, name]);

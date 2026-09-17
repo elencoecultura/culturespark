@@ -5,6 +5,7 @@ import { Loader2, LineChart, TrendingDown, TrendingUp, Minus, Search, X, ArrowLe
 import { getWellbeingTimeline } from "@/lib/wellbeing-timeline.functions";
 import { listAnalyticsMembers } from "@/lib/gamification-analytics.functions";
 import { PeriodPicker, type PeriodValue } from "./PeriodPicker";
+import { cn } from "@/lib/utils";
 
 // Paleta categórica validada (slots do tema padrão, passo escuro — ver skill
 // dataviz/references/palette.md), conferida contra o roxo/azul de fundo do
@@ -180,10 +181,14 @@ export function TrendCard({
 
 type Member = { id: string; name: string; attraction: string | null; negocio: string | null };
 
-export default function WellbeingTimelineScreen() {
+export default function WellbeingTimelineScreen({ isAdmin }: { isAdmin?: boolean } = {}) {
   const [periodValue, setPeriodValue] = useState<PeriodValue>({ kind: "preset", period: "mes" });
   const [query, setQuery] = useState("");
   const [person, setPerson] = useState<Member | null>(null);
+  // Admin/gerente/direção normalmente comparam casa a casa — "Meu time"
+  // deixa ver só quem a pessoa lidera direto, mesmo acumulando um papel
+  // maior (mesmo filtro do painel do Líder).
+  const [mineOnly, setMineOnly] = useState(false);
 
   const fn = useServerFn(getWellbeingTimeline);
   const membersFn = useServerFn(listAnalyticsMembers);
@@ -191,12 +196,12 @@ export default function WellbeingTimelineScreen() {
 
   const dateArgs = periodValue.kind === "preset" ? { period: periodValue.period } : { from: periodValue.from, to: periodValue.to };
   const q = useQuery({
-    queryKey: ["wellbeing-timeline", dateArgs, person?.id ?? null],
+    queryKey: ["wellbeing-timeline", dateArgs, person?.id ?? null, mineOnly],
     queryFn: () =>
       fn({
         data: person
           ? { ...dateArgs, mode: "individual" as const, user_id: person.id }
-          : { ...dateArgs, mode: "department" as const },
+          : { ...dateArgs, mode: "department" as const, mineOnly },
       }),
   });
 
@@ -221,6 +226,31 @@ export default function WellbeingTimelineScreen() {
 
       <div className="grid gap-2 px-1 mb-4">
         <PeriodPicker value={periodValue} onChange={setPeriodValue} />
+
+        {isAdmin && !person && (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setMineOnly(false)}
+              className={cn(
+                "flex-1 rounded-2xl px-4 py-2.5 text-[12.5px] font-semibold transition",
+                !mineOnly ? "bg-brand-grad text-white" : "glass-chip text-white/70",
+              )}
+            >
+              Todas as casas
+            </button>
+            <button
+              type="button"
+              onClick={() => setMineOnly(true)}
+              className={cn(
+                "flex-1 rounded-2xl px-4 py-2.5 text-[12.5px] font-semibold transition",
+                mineOnly ? "bg-brand-grad text-white" : "glass-chip text-white/70",
+              )}
+            >
+              Meu time
+            </button>
+          </div>
+        )}
 
         {person ? (
           <button
