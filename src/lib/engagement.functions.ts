@@ -153,6 +153,43 @@ export const submitMood = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// Reflexão do check-in (humor 1-3): tela de energia mostra a caixa "Reflita"
+// logo após o registro e manda o texto pra cá, separado do submitMood
+// porque a reflexão é opcional e vem DEPOIS do humor já estar salvo — não
+// pode travar o check-in em si. Guarda no mesmo campo `note` que o admin
+// de "Cuidado com o elenco" já lê (histórico individual). Não existe
+// policy de UPDATE pra mood_checkins (só insert/select), então usa o
+// client de service role, escopado ao check-in mais recente de HOJE do
+// próprio usuário — nunca deixa editar check-in de outro dia ou de outra
+// pessoa.
+export const saveMoodReflection = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ reflection: z.string().min(1).max(500) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const tz = "America/Sao_Paulo";
+    const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+    const todayKey = fmt.format(new Date());
+
+    const { data: recent } = await supabaseAdmin
+      .from("mood_checkins")
+      .select("id, created_at")
+      .eq("user_id", context.userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!recent || fmt.format(new Date(recent.created_at as string)) !== todayKey) {
+      throw new Error("Não achei seu check-in de hoje.");
+    }
+
+    const { error } = await supabaseAdmin
+      .from("mood_checkins")
+      .update({ note: data.reflection.trim() })
+      .eq("id", recent.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const listMyMoods = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {

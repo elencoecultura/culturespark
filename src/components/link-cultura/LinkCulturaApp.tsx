@@ -43,7 +43,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { confirmAction } from "@/lib/confirm";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { submitMood, listMyMoods, sendKudos, listKudos, toggleKudosLike, listColleagues, leaderOverview } from "@/lib/engagement.functions";
+import { submitMood, saveMoodReflection, listMyMoods, sendKudos, listKudos, toggleKudosLike, listColleagues, leaderOverview } from "@/lib/engagement.functions";
 import { listWeekBirthdays } from "@/lib/birthdays.functions";
 import { getDiscStatus } from "@/lib/disc.functions";
 import Bussola, { BussolaAdmin } from "./Bussola";
@@ -391,6 +391,7 @@ function EnergyScale({ value, onChange }: { value: number | null; onChange: (n: 
 function EnergyCheckin({ name, streak, doneToday }: { name: string; streak: number; doneToday: boolean }) {
   const qc = useQueryClient();
   const submitFn = useServerFn(submitMood);
+  const reflectionFn = useServerFn(saveMoodReflection);
   const [mood, setMood] = useState<number | null>(null);
   const [done, setDone] = useState(false);
   const isDone = done || doneToday;
@@ -406,6 +407,22 @@ function EnergyCheckin({ name, streak, doneToday }: { name: string; streak: numb
     },
     onError: (e: any) => toast.error("Não rolou registrar", { description: e.message }),
   });
+
+  // "Reflita" só aparece logo após a PESSOA escolher 1-3 nesse carregamento
+  // da tela (não quando ela reabre o app depois de já ter feito o check-in
+  // — nesse caso `mood` local está vazio e a caixa some, de propósito).
+  const [reflection, setReflection] = useState("");
+  const [reflectionSaved, setReflectionSaved] = useState(false);
+  const showReflection = done && mood != null && mood <= 3 && !reflectionSaved;
+  const rm = useMutation({
+    mutationFn: () => reflectionFn({ data: { reflection: reflection.trim() } }),
+    onSuccess: () => {
+      toast.success("Reflexão salva", { description: "Obrigado por compartilhar." });
+      setReflectionSaved(true);
+    },
+    onError: (e: any) => toast.error("Não rolou salvar", { description: e.message }),
+  });
+
   return (
     <section className="px-1">
       <div className="flex items-center justify-between gap-3">
@@ -419,9 +436,36 @@ function EnergyCheckin({ name, streak, doneToday }: { name: string; streak: numb
       </div>
 
       {isDone ? (
-        <div className="glass-chip mt-5 inline-flex items-center gap-2 rounded-full px-4 py-3 text-[13px] font-semibold text-white">
-          <Check size={16} className="text-magic-green" /> Valeu por cuidar do clima. Até amanhã.
-        </div>
+        <>
+          <div className="glass-chip mt-5 inline-flex items-center gap-2 rounded-full px-4 py-3 text-[13px] font-semibold text-white">
+            <Check size={16} className="text-magic-green" /> Valeu por cuidar do clima. Até amanhã.
+          </div>
+          {showReflection && (
+            <GlassCard variant="glass" className="mt-3 p-4">
+              <div className="flex items-center gap-1.5 text-[14.5px] font-bold text-white">
+                Reflita <Sparkles size={15} className="text-white/80" />
+              </div>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-white/70">
+                Percebemos que hoje o seu sentimento não está tão positivo. O que você pode fazer para mudar esse
+                sentimento?
+              </p>
+              <textarea
+                value={reflection}
+                onChange={(e) => setReflection(e.target.value)}
+                placeholder="Escreva aqui sua reflexão…"
+                rows={3}
+                className="glass-input mt-3 w-full resize-none rounded-2xl px-4 py-3 text-[13.5px] text-white outline-none placeholder:text-white/40"
+              />
+              <button
+                onClick={() => rm.mutate()}
+                disabled={!reflection.trim() || rm.isPending}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-brand-grad px-5 py-3 text-[13.5px] font-bold text-white shadow-glow transition active:scale-[0.99] disabled:opacity-50"
+              >
+                {rm.isPending ? <Loader2 size={16} className="animate-spin" /> : "Salvar reflexão"}
+              </button>
+            </GlassCard>
+          )}
+        </>
       ) : (
         <>
           <EnergyScale value={mood} onChange={setMood} />
