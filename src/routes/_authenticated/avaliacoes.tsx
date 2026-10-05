@@ -1367,7 +1367,7 @@ function DocumentsSection({ evaluationId }: { evaluationId: string }) {
         .from("evaluation-documents")
         .upload(path, file, { contentType: file.type || "application/pdf", upsert: false });
       if (error) throw error;
-      await attachFn({ data: { evaluation_id: evaluationId, storage_path: path, mime_type: file.type || "application/pdf", kind: "assinada" } });
+      await attachFn({ data: { evaluation_id: evaluationId, storage_path: path, mime_type: file.type || "application/pdf", kind: "assinado" } });
       toast.success("Documento enviado — avaliação marcada como concluída");
       qc.invalidateQueries({ queryKey: ["eval-docs", evaluationId] });
       qc.invalidateQueries({ queryKey: ["eval", evaluationId] });

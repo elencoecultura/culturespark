@@ -779,7 +779,13 @@ export const attachEvaluationDocument = createServerFn({ method: "POST" })
         evaluation_id: z.string().uuid(),
         storage_path: z.string().min(3),
         mime_type: z.string().default("application/pdf"),
-        kind: z.string().default("assinada"),
+        // O banco só aceita 'gerado' | 'assinado' (CHECK evaluation_documents_kind_check).
+        // "assinada" (feminino) era o valor que a tela enviava e sempre falhava; segue
+        // aceito aqui pra versões antigas do app abertas em cache.
+        kind: z
+          .enum(["gerado", "assinado", "assinada"])
+          .default("assinado")
+          .transform((k) => (k === "assinada" ? "assinado" : k)),
       })
       .parse(d),
   )
