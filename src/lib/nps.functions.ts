@@ -41,6 +41,25 @@ async function scopedRespondentIds(supabase: any, userId: string): Promise<strin
 
 const NPS_WINDOW_DAYS = 3;
 
+// Perguntas extras da pesquisa (cada uma nota de 0 a 10), guardadas em
+// nps_surveys.extra_questions como [{id, text}]. A pergunta principal segue em
+// nps_surveys.question e é a única que alimenta o NPS/histórico. Tolerante a
+// coluna ausente/valor estranho: sem a migration aplicada vira lista vazia.
+type ExtraQuestion = { id: string; text: string };
+function parseExtraQuestions(raw: unknown): ExtraQuestion[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (q): q is ExtraQuestion => !!q && typeof (q as any).id === "string" && typeof (q as any).text === "string",
+  );
+}
+
+function scoreStats(scores: number[]) {
+  const n = scores.length;
+  const histogram = Array.from({ length: 11 }, (_, i) => scores.filter((v) => v === i).length);
+  const avg = n ? Math.round((scores.reduce((a, b) => a + b, 0) / n) * 10) / 10 : null;
+  return { total: n, avg, histogram };
+}
+
 // Cadência automática do NPS: cria a pesquisa do mês no dia 1 (se ainda não
 // existir) e manda um reforço (broadcast) nos dias 2 e 3 pra quem ainda não
 // respondeu. Sem cron externo — roda de carona em toda checagem de pesquisa
@@ -121,7 +140,11 @@ export const getActiveNpsSurvey = createServerFn({ method: "GET" })
       .eq("survey_id", survey.id)
       .eq("user_id", context.userId)
       .maybeSingle();
-    return { survey, answered: !!mine, myScore: mine?.score ?? null };
+    return {
+      survey: { ...survey, extra_questions: parseExtraQuestions((survey as any).extra_questions) },
+      answered: !!mine,
+      myScore: mine?.score ?? null,
+    };
   });
 
 export const submitNpsResponse = createServerFn({ method: "POST" })
@@ -131,11 +154,29 @@ export const submitNpsResponse = createServerFn({ method: "POST" })
       .object({
         survey_id: z.string().uuid(),
         score: z.number().int().min(0).max(10),
+        extra_scores: z.record(z.string(), z.number().int().min(0).max(10)).optional(),
         comment: z.string().max(1000).optional(),
       })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    // Pesquisa com várias perguntas: todas precisam de nota de 0 a 10 (o
+    // comentário continua opcional) e não aceita nota pra pergunta que não
+    // existe nessa pesquisa.
+    const { data: survey } = await context.supabase
+      .from("nps_surveys")
+      .select("*")
+      .eq("id", data.survey_id)
+      .maybeSingle();
+    if (!survey) throw new Error("Pesquisa não encontrada.");
+    const extras = parseExtraQuestions((survey as any).extra_questions);
+    const given = data.extra_scores ?? {};
+    if (extras.some((q) => given[q.id] === undefined)) {
+      throw new Error("Responda todas as perguntas da pesquisa.");
+    }
+    const knownIds = new Set(extras.map((q) => q.id));
+    if (Object.keys(given).some((k) => !knownIds.has(k))) throw new Error("Resposta inválida.");
+
     // Só 1 resposta por pessoa por pesquisa — a tabela já tem
     // UNIQUE(survey_id, user_id), então um insert simples falha sozinho se
     // a pessoa tentar de novo; a checagem explícita aqui só é pra dar uma
@@ -154,6 +195,9 @@ export const submitNpsResponse = createServerFn({ method: "POST" })
       user_id: context.userId,
       score: data.score,
       comment: data.comment ?? null,
+      // só manda a coluna quando há pergunta extra: pesquisa de pergunta
+      // única segue funcionando mesmo antes da migration ser aplicada
+      ...(extras.length ? { extra_scores: given } : {}),
     });
     if (error) throw new Error(error.message);
     return { ok: true };
@@ -180,6 +224,7 @@ export const createNpsSurvey = createServerFn({ method: "POST" })
       .object({
         title: z.string().min(3).max(160).optional(),
         question: z.string().min(5).max(500).optional(),
+        extra_questions: z.array(z.string().trim().min(3).max(300)).max(15).optional(),
         opens_at: z.string(),
         closes_at: z.string(),
       })
@@ -192,6 +237,9 @@ export const createNpsSurvey = createServerFn({ method: "POST" })
       .insert({
         title: data.title,
         question: data.question,
+        ...(data.extra_questions?.length
+          ? { extra_questions: data.extra_questions.map((text, i) => ({ id: `q${i + 2}`, text })) }
+          : {}),
         opens_at: data.opens_at,
         closes_at: data.closes_at,
         active: true,
@@ -208,10 +256,15 @@ export const getNpsResults = createServerFn({ method: "GET" })
   .inputValidator((d) => z.object({ survey_id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     const scope = await scopedRespondentIds(context.supabase, context.userId);
-    let q = context.supabase
-      .from("nps_responses")
-      .select("score, comment, created_at, user_id")
-      .eq("survey_id", data.survey_id);
+    const { data: survey } = await context.supabase
+      .from("nps_surveys")
+      .select("*")
+      .eq("id", data.survey_id)
+      .maybeSingle();
+    const extras = parseExtraQuestions((survey as any)?.extra_questions);
+    // select("*") (e não a lista de colunas) pra continuar funcionando antes
+    // da migration das perguntas extras ser aplicada
+    let q = context.supabase.from("nps_responses").select("*").eq("survey_id", data.survey_id);
     if (scope) q = scope.length ? q.in("user_id", scope) : q.eq("user_id", "__none__");
     const { data: rows } = await q;
     const r = rows ?? [];
@@ -220,7 +273,29 @@ export const getNpsResults = createServerFn({ method: "GET" })
     const passives = r.filter((x: any) => x.score >= 7 && x.score <= 8).length;
     const detractors = r.filter((x: any) => x.score <= 6).length;
     const nps = total ? Math.round(((promoters - detractors) / total) * 100) : 0;
-    return { total, promoters, passives, detractors, nps, comments: r };
+
+    // Estatística por pergunta: a principal (a do NPS) + as extras. Só a
+    // principal tem NPS; as extras são nota média e distribuição de 0 a 10.
+    const questions = [
+      { id: "main", text: (survey?.question as string | undefined) ?? "", ...scoreStats(r.map((x: any) => x.score as number)) },
+      ...extras.map((e) => ({
+        id: e.id,
+        text: e.text,
+        ...scoreStats(
+          r
+            .map((x: any) => (x.extra_scores as Record<string, number> | null | undefined)?.[e.id])
+            .filter((v): v is number => typeof v === "number"),
+        ),
+      })),
+    ];
+
+    const comments = r.map((x: any) => ({
+      score: x.score as number,
+      comment: x.comment as string | null,
+      created_at: x.created_at as string,
+      user_id: x.user_id as string,
+    }));
+    return { total, promoters, passives, detractors, nps, comments, questions };
   });
 
 export const getNpsHistory = createServerFn({ method: "GET" })

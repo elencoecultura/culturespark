@@ -855,6 +855,7 @@ export type Database = {
         Row: {
           comment: string | null
           created_at: string
+          extra_scores: Json
           id: string
           score: number
           survey_id: string
@@ -863,6 +864,7 @@ export type Database = {
         Insert: {
           comment?: string | null
           created_at?: string
+          extra_scores?: Json
           id?: string
           score: number
           survey_id: string
@@ -871,6 +873,7 @@ export type Database = {
         Update: {
           comment?: string | null
           created_at?: string
+          extra_scores?: Json
           id?: string
           score?: number
           survey_id?: string
@@ -892,6 +895,7 @@ export type Database = {
           closes_at: string
           created_at: string
           created_by: string | null
+          extra_questions: Json
           id: string
           opens_at: string
           question: string
@@ -902,6 +906,7 @@ export type Database = {
           closes_at: string
           created_at?: string
           created_by?: string | null
+          extra_questions?: Json
           id?: string
           opens_at?: string
           question?: string
@@ -912,6 +917,7 @@ export type Database = {
           closes_at?: string
           created_at?: string
           created_by?: string | null
+          extra_questions?: Json
           id?: string
           opens_at?: string
           question?: string

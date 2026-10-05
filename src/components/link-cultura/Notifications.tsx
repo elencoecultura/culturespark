@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, Loader2, Send, Trash2, CheckCheck, Sparkles } from "lucide-react";
+import { Bell, Loader2, Send, Trash2, CheckCheck, Sparkles, Plus, X } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -294,6 +294,51 @@ export function BroadcastAdminScreen() {
   );
 }
 
+// Resultado por pergunta de uma pesquisa com várias perguntas: nota média e
+// distribuição de 0 a 10. Só aparece quando a pesquisa tem mais de uma
+// pergunta (pesquisa de pergunta única segue mostrando só o bloco de NPS).
+function NpsQuestionStats({
+  questions,
+}: {
+  questions: Array<{ id: string; text: string; total: number; avg: number | null; histogram: number[] }>;
+}) {
+  if (questions.length < 2) return null;
+  return (
+    <div className="mt-3 space-y-2">
+      {questions.map((qu, i) => {
+        const max = Math.max(1, ...qu.histogram);
+        return (
+          <div key={qu.id} className="rounded-lg bg-white/5 px-3 py-2.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 text-[12px] leading-snug text-white/85">
+                <span className="mr-1.5 font-bold text-white/50">{i + 1}.</span>
+                {qu.text}
+                {i === 0 && <span className="ml-1.5 text-[10px] uppercase tracking-[0.12em] text-white/45">(NPS)</span>}
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-[16px] font-bold leading-none text-white">
+                  {qu.avg === null ? "—" : String(qu.avg).replace(".", ",")}
+                </div>
+                <div className="mt-0.5 text-[10px] text-white/50">média · {qu.total} resp.</div>
+              </div>
+            </div>
+            <div className="mt-2.5 flex items-end gap-0.5">
+              {qu.histogram.map((c, n) => (
+                <div key={n} className="flex flex-1 flex-col items-center gap-0.5">
+                  <div className="flex h-6 w-full items-end overflow-hidden rounded-sm bg-white/10">
+                    <div className="w-full bg-pink/70" style={{ height: `${c ? Math.max(12, (c / max) * 100) : 0}%` }} />
+                  </div>
+                  <div className="text-[8px] text-white/45">{n}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // Versão só-leitura pra líder/gerente/direção: mesmos números (NPS, promotores/
 // neutros/detratores, evolução mensal, comentários) mas escopados ao time da
 // pessoa pelas mesmas regras de listUsers — sem criar/encerrar pesquisa.
@@ -360,6 +405,9 @@ export function NpsResultsScreen() {
                   <div className="mt-1 text-[11px] text-white/60">
                     {new Date(s.opens_at).toLocaleDateString("pt-BR")} → {new Date(s.closes_at).toLocaleDateString("pt-BR")}
                     {isActive ? " · ativa" : " · encerrada"}
+                    {Array.isArray(s.extra_questions) && s.extra_questions.length > 0
+                      ? ` · ${s.extra_questions.length + 1} perguntas`
+                      : ""}
                   </div>
                 </div>
                 <button
@@ -377,6 +425,7 @@ export function NpsResultsScreen() {
                     <div><div className="text-lg font-bold text-magic-amber">{results.data.passives}</div><div className="text-white/60">Neutros</div></div>
                     <div><div className="text-lg font-bold text-magic-red">{results.data.detractors}</div><div className="text-white/60">Detratores</div></div>
                   </div>
+                  <NpsQuestionStats questions={results.data.questions} />
                   <div className="mt-3 space-y-1 max-h-40 overflow-auto">
                     {(results.data.comments ?? []).filter((c: any) => c.comment).map((c: any, i: number) => (
                       <div key={i} className="rounded-lg bg-white/5 px-3 py-1.5 text-[12px]">
@@ -414,6 +463,10 @@ function NpsAdminBlock() {
     "Em uma escala de 0 a 10, o quanto você recomendaria trabalhar na Hector Studios para um amigo?",
   );
   const [days, setDays] = useState(2);
+  // perguntas extras (cada uma nota de 0 a 10), além da principal
+  const [extras, setExtras] = useState<string[]>([]);
+  const cleanExtras = extras.map((t) => t.trim()).filter(Boolean);
+  const extrasInvalid = cleanExtras.some((t) => t.length < 3);
   const [openResults, setOpenResults] = useState<string | null>(null);
 
   const create = useMutation({
@@ -424,12 +477,14 @@ function NpsAdminBlock() {
         data: {
           title,
           question,
+          extra_questions: cleanExtras.length ? cleanExtras : undefined,
           opens_at: opens.toISOString(),
           closes_at: closes.toISOString(),
         },
       });
     },
     onSuccess: () => {
+      setExtras([]);
       toast.success("Pesquisa NPS publicada");
       qc.invalidateQueries({ queryKey: ["nps-surveys"] });
       qc.invalidateQueries({ queryKey: ["nps-active"] });
@@ -476,7 +531,7 @@ function NpsAdminBlock() {
         </label>
         <label className="mt-3 block">
           <span className="ml-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
-            Pergunta (o texto que a pessoa lê pra responder)
+            Pergunta principal (o texto que a pessoa lê, nota de 0 a 10)
           </span>
           <textarea
             value={question}
@@ -485,6 +540,42 @@ function NpsAdminBlock() {
             className="glass-input mt-2 w-full resize-none rounded-2xl px-4 py-3 text-[14px] text-white outline-none"
           />
         </label>
+        <div className="mt-3">
+          <span className="ml-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
+            Perguntas extras (opcional)
+          </span>
+          <p className="ml-1 mt-1 text-[11.5px] text-white/50">
+            Cada uma também vira uma nota de 0 a 10. A principal (acima) é a que conta pro NPS; as extras viram nota média.
+          </p>
+          {extras.map((t, i) => (
+            <div key={i} className="mt-2 flex items-start gap-2">
+              <textarea
+                value={t}
+                onChange={(e) => setExtras((prev) => prev.map((x, j) => (j === i ? e.target.value : x)))}
+                rows={2}
+                placeholder={`Pergunta ${i + 2}`}
+                className="glass-input w-full resize-none rounded-2xl px-4 py-3 text-[14px] text-white outline-none placeholder:text-white/40"
+              />
+              <button
+                type="button"
+                onClick={() => setExtras((prev) => prev.filter((_, j) => j !== i))}
+                className="mt-1 shrink-0 rounded-full p-2 text-white/60 transition hover:bg-white/10"
+                aria-label="Remover pergunta"
+              >
+                <X size={15} />
+              </button>
+            </div>
+          ))}
+          {extras.length < 15 && (
+            <button
+              type="button"
+              onClick={() => setExtras((prev) => [...prev, ""])}
+              className="glass-chip mt-2 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[12.5px] font-semibold text-white/85"
+            >
+              <Plus size={14} /> Adicionar pergunta
+            </button>
+          )}
+        </div>
         <label className="mt-3 block">
           <span className="ml-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
             Janela (dias)
@@ -500,7 +591,7 @@ function NpsAdminBlock() {
         </label>
         <button
           onClick={() => create.mutate()}
-          disabled={create.isPending || !title.trim() || !question.trim()}
+          disabled={create.isPending || !title.trim() || !question.trim() || extrasInvalid}
           className="mt-4 w-full rounded-2xl bg-brand-grad px-5 py-3 text-[14px] font-semibold text-white shadow-glow disabled:opacity-50"
         >
           {create.isPending ? "Publicando..." : "Publicar pesquisa"}
@@ -552,6 +643,9 @@ function NpsAdminBlock() {
                   <div className="mt-1 text-[11px] text-white/60">
                     {new Date(s.opens_at).toLocaleDateString("pt-BR")} → {new Date(s.closes_at).toLocaleDateString("pt-BR")}
                     {isActive ? " · ativa" : " · encerrada"}
+                    {Array.isArray(s.extra_questions) && s.extra_questions.length > 0
+                      ? ` · ${s.extra_questions.length + 1} perguntas`
+                      : ""}
                   </div>
                 </div>
                 <div className="flex gap-1">
@@ -583,6 +677,7 @@ function NpsAdminBlock() {
                     <div><div className="text-lg font-bold text-magic-amber">{results.data.passives}</div><div className="text-white/60">Neutros</div></div>
                     <div><div className="text-lg font-bold text-magic-red">{results.data.detractors}</div><div className="text-white/60">Detratores</div></div>
                   </div>
+                  <NpsQuestionStats questions={results.data.questions} />
                   <div className="mt-3 space-y-1 max-h-40 overflow-auto">
                     {(results.data.comments ?? []).filter((c: any) => c.comment).map((c: any, i: number) => (
                       <div key={i} className="rounded-lg bg-white/5 px-3 py-1.5 text-[12px]">

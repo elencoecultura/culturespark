@@ -6,6 +6,26 @@ import { Bell, Star, X } from "lucide-react";
 import { getActiveNpsSurvey, submitNpsResponse } from "@/lib/nps.functions";
 import { listNotifications } from "@/lib/notifications.functions";
 
+// Linha de notas 0–10 (uma por pergunta da pesquisa).
+function ScoreRow({ value, onChange }: { value: number | null; onChange: (n: number) => void }) {
+  return (
+    <div className="mt-2 grid grid-cols-11 gap-1">
+      {Array.from({ length: 11 }).map((_, n) => (
+        <button
+          key={n}
+          onClick={() => onChange(n)}
+          className={
+            "rounded-lg py-1.5 text-[11px] font-semibold transition " +
+            (value === n ? "bg-brand-grad text-white shadow-glow" : "glass-chip text-white/75 hover:bg-white/15")
+          }
+        >
+          {n}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function NpsBanner() {
   const fn = useServerFn(getActiveNpsSurvey);
   const submit = useServerFn(submitNpsResponse);
@@ -13,11 +33,22 @@ export function NpsBanner() {
   const q = useQuery({ queryKey: ["nps-active"], queryFn: () => fn() });
   const [dismissed, setDismissed] = useState(false);
   const [open, setOpen] = useState(false);
-  const [score, setScore] = useState<number | null>(null);
+  // nota por pergunta: "main" é a pergunta principal (a do NPS); as extras
+  // usam o id que vem da pesquisa (q2, q3, ...)
+  const [scores, setScores] = useState<Record<string, number>>({});
   const [comment, setComment] = useState("");
   const mut = useMutation({
-    mutationFn: () =>
-      submit({ data: { survey_id: q.data!.survey!.id, score: score!, comment: comment || undefined } }),
+    mutationFn: () => {
+      const { main, ...extra } = scores;
+      return submit({
+        data: {
+          survey_id: q.data!.survey!.id,
+          score: main,
+          extra_scores: Object.keys(extra).length ? extra : undefined,
+          comment: comment || undefined,
+        },
+      });
+    },
     onSuccess: () => {
       toast.success("Obrigado pelo seu feedback ✨");
       qc.invalidateQueries({ queryKey: ["nps-active"] });
@@ -27,6 +58,9 @@ export function NpsBanner() {
 
   if (!q.data?.survey || q.data.answered || dismissed) return null;
   const s = q.data.survey;
+  const questions = [{ id: "main", text: s.question }, ...s.extra_questions];
+  const missing = questions.filter((qu) => scores[qu.id] === undefined).length;
+  const multi = questions.length > 1;
 
   return (
     <div className="mt-4 glass-soft rounded-[28px] p-3.5 text-white">
@@ -35,7 +69,9 @@ export function NpsBanner() {
           <Star size={16} />
         </span>
         <button onClick={() => setOpen((v) => !v)} className="min-w-0 flex-1 text-left">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/55">Pesquisa rápida</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/55">
+            Pesquisa rápida{multi ? ` · ${questions.length} perguntas` : ""}
+          </div>
           <div className="truncate text-[13.5px] font-semibold">{s.title}</div>
         </button>
         {!open && (
@@ -50,22 +86,26 @@ export function NpsBanner() {
 
       {open && (
         <div className="mt-3">
-          <p className="text-[12.5px] text-white/80">{s.question}</p>
-          <div className="mt-2 grid grid-cols-11 gap-1">
-            {Array.from({ length: 11 }).map((_, n) => (
-              <button
-                key={n}
-                onClick={() => setScore(n)}
-                className={
-                  "rounded-lg py-1.5 text-[11px] font-semibold transition " +
-                  (score === n ? "bg-brand-grad text-white shadow-glow" : "glass-chip text-white/75 hover:bg-white/15")
-                }
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-          {score !== null && (
+          {questions.map((qu, i) => (
+            <div key={qu.id} className={i > 0 ? "mt-4" : ""}>
+              {multi && (
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/45">
+                  Pergunta {i + 1} de {questions.length}
+                </div>
+              )}
+              <p className="mt-0.5 text-[12.5px] text-white/80">{qu.text}</p>
+              <ScoreRow
+                value={scores[qu.id] ?? null}
+                onChange={(n) => setScores((prev) => ({ ...prev, [qu.id]: n }))}
+              />
+            </div>
+          ))}
+          {missing > 0 && missing < questions.length && (
+            <p className="mt-3 text-[11.5px] text-white/50">
+              Falta{missing > 1 ? "m" : ""} {missing} pergunta{missing > 1 ? "s" : ""}.
+            </p>
+          )}
+          {missing === 0 && (
             <>
               <textarea
                 value={comment}
