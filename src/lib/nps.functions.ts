@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { fetchAllRows } from "@/lib/db-pagination";
 
 async function isAdmin(supabase: any, userId: string) {
   const { data } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
@@ -225,6 +226,7 @@ export const createNpsSurvey = createServerFn({ method: "POST" })
         title: z.string().min(3).max(160).optional(),
         question: z.string().min(5).max(500).optional(),
         extra_questions: z.array(z.string().trim().min(3).max(300)).max(15).optional(),
+        kind: z.enum(["nps", "quiz"]).optional(),
         opens_at: z.string(),
         closes_at: z.string(),
       })
@@ -240,6 +242,8 @@ export const createNpsSurvey = createServerFn({ method: "POST" })
         ...(data.extra_questions?.length
           ? { extra_questions: data.extra_questions.map((text, i) => ({ id: `q${i + 2}`, text })) }
           : {}),
+        // só manda a coluna no questionário: NPS é o padrão do banco
+        ...(data.kind === "quiz" ? { kind: "quiz" } : {}),
         opens_at: data.opens_at,
         closes_at: data.closes_at,
         active: true,
@@ -295,34 +299,42 @@ export const getNpsResults = createServerFn({ method: "GET" })
       created_at: x.created_at as string,
       user_id: x.user_id as string,
     }));
-    return { total, promoters, passives, detractors, nps, comments, questions };
+    const kind = (survey as any)?.kind === "quiz" ? ("quiz" as const) : ("nps" as const);
+    return { kind, total, promoters, passives, detractors, nps, comments, questions };
   });
 
 export const getNpsHistory = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const scope = await scopedRespondentIds(context.supabase, context.userId);
-    const { data: surveys, error } = await context.supabase
+    const { data: allSurveys, error } = await context.supabase
       .from("nps_surveys")
-      .select("id, title, opens_at, closes_at")
+      .select("*")
       .order("opens_at", { ascending: true });
     if (error) throw new Error(error.message);
+    // questionário (kind "quiz") não tem NPS — fica fora da evolução
+    const surveys = (allSurveys ?? []).filter((s) => (s as any).kind !== "quiz");
 
-    const ids = (surveys ?? []).map((s) => s.id);
-    let rq = ids.length
-      ? context.supabase.from("nps_responses").select("survey_id, score, user_id").in("survey_id", ids)
-      : null;
-    if (rq && scope) rq = scope.length ? rq.in("user_id", scope) : rq.eq("user_id", "__none__");
-    const { data: rows } = rq ? await rq : { data: [] as Array<{ survey_id: string; score: number }> };
+    const ids = surveys.map((s) => s.id);
+    const emptyScope = scope !== null && scope.length === 0;
+    // Paginado de verdade (teto de 1000 linhas por requisição no servidor)
+    const rows =
+      ids.length && !emptyScope
+        ? await fetchAllRows<{ survey_id: string; score: number; user_id: string }>((from, to) => {
+            let rq = context.supabase.from("nps_responses").select("survey_id, score, user_id").in("survey_id", ids);
+            if (scope) rq = rq.in("user_id", scope);
+            return rq.range(from, to);
+          })
+        : [];
 
     const bySurvey = new Map<string, number[]>();
-    for (const r of rows ?? []) {
+    for (const r of rows) {
       const arr = bySurvey.get(r.survey_id) ?? [];
       arr.push(r.score);
       bySurvey.set(r.survey_id, arr);
     }
 
-    const history = (surveys ?? []).map((s) => {
+    const history = surveys.map((s) => {
       const scores = bySurvey.get(s.id) ?? [];
       const total = scores.length;
       const promoters = scores.filter((v) => v >= 9).length;
@@ -341,6 +353,69 @@ export const getNpsHistory = createServerFn({ method: "GET" })
     return { history };
   });
 
+// Visão geral pra tela de Pesquisas: cada pesquisa (NPS ou questionário) com
+// quantas pessoas responderam, de quantas no escopo de quem está vendo.
+export const listNpsOverview = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const scope = await scopedRespondentIds(context.supabase, context.userId);
+    const { data: surveys, error } = await context.supabase
+      .from("nps_surveys")
+      .select("*")
+      .order("opens_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    const list = surveys ?? [];
+    const ids = list.map((s) => s.id);
+    const emptyScope = scope !== null && scope.length === 0;
+
+    const rows =
+      ids.length && !emptyScope
+        ? await fetchAllRows<{ survey_id: string; score: number }>((from, to) => {
+            let rq = context.supabase.from("nps_responses").select("survey_id, score").in("survey_id", ids);
+            if (scope) rq = rq.in("user_id", scope);
+            return rq.range(from, to);
+          })
+        : [];
+    const bySurvey = new Map<string, number[]>();
+    for (const r of rows) {
+      const arr = bySurvey.get(r.survey_id) ?? [];
+      arr.push(r.score);
+      bySurvey.set(r.survey_id, arr);
+    }
+
+    let eligible = 0;
+    if (!emptyScope) {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      let pq = supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }).eq("active", true);
+      if (scope) pq = pq.in("id", scope);
+      const { count } = await pq;
+      eligible = count ?? 0;
+    }
+
+    return {
+      eligible,
+      surveys: list.map((s) => {
+        const scores = bySurvey.get(s.id) ?? [];
+        const total = scores.length;
+        const kind = (s as any).kind === "quiz" ? ("quiz" as const) : ("nps" as const);
+        const promoters = scores.filter((v) => v >= 9).length;
+        const detractors = scores.filter((v) => v <= 6).length;
+        return {
+          id: s.id,
+          title: s.title,
+          question: s.question,
+          kind,
+          extra_questions: parseExtraQuestions((s as any).extra_questions),
+          opens_at: s.opens_at,
+          closes_at: s.closes_at,
+          active: s.active,
+          total,
+          nps: kind === "nps" && total ? Math.round(((promoters - detractors) / total) * 100) : null,
+        };
+      }),
+    };
+  });
+
 export const closeNpsSurvey = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
@@ -350,6 +425,19 @@ export const closeNpsSurvey = createServerFn({ method: "POST" })
       .from("nps_surveys")
       .update({ active: false, closes_at: new Date().toISOString() })
       .eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const deleteNpsSurvey = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    if (!(await isAdmin(context.supabase, context.userId))) throw new Error("Forbidden");
+    // Service role: o papel authenticated só tem SELECT em nps_surveys. As
+    // respostas saem junto (nps_responses.survey_id é ON DELETE CASCADE).
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("nps_surveys").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, Loader2, Send, Trash2, CheckCheck, Sparkles, Plus, X } from "lucide-react";
+import { Bell, Loader2, Send, Trash2, CheckCheck, Sparkles } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -15,11 +15,10 @@ import {
 } from "@/lib/notifications.functions";
 import {
   listNpsSurveys,
-  createNpsSurvey,
-  closeNpsSurvey,
   getNpsResults,
   getNpsHistory,
 } from "@/lib/nps.functions";
+import { NpsQuestionStats } from "./Pesquisas";
 
 function timeAgo(iso: string) {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -289,53 +288,7 @@ export function BroadcastAdminScreen() {
         </div>
       </div>
 
-      <NpsAdminBlock />
     </>
-  );
-}
-
-// Resultado por pergunta de uma pesquisa com várias perguntas: nota média e
-// distribuição de 0 a 10. Só aparece quando a pesquisa tem mais de uma
-// pergunta (pesquisa de pergunta única segue mostrando só o bloco de NPS).
-function NpsQuestionStats({
-  questions,
-}: {
-  questions: Array<{ id: string; text: string; total: number; avg: number | null; histogram: number[] }>;
-}) {
-  if (questions.length < 2) return null;
-  return (
-    <div className="mt-3 space-y-2">
-      {questions.map((qu, i) => {
-        const max = Math.max(1, ...qu.histogram);
-        return (
-          <div key={qu.id} className="rounded-lg bg-white/5 px-3 py-2.5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 text-[12px] leading-snug text-white/85">
-                <span className="mr-1.5 font-bold text-white/50">{i + 1}.</span>
-                {qu.text}
-                {i === 0 && <span className="ml-1.5 text-[10px] uppercase tracking-[0.12em] text-white/45">(NPS)</span>}
-              </div>
-              <div className="shrink-0 text-right">
-                <div className="text-[16px] font-bold leading-none text-white">
-                  {qu.avg === null ? "—" : String(qu.avg).replace(".", ",")}
-                </div>
-                <div className="mt-0.5 text-[10px] text-white/50">média · {qu.total} resp.</div>
-              </div>
-            </div>
-            <div className="mt-2.5 flex items-end gap-0.5">
-              {qu.histogram.map((c, n) => (
-                <div key={n} className="flex flex-1 flex-col items-center gap-0.5">
-                  <div className="flex h-6 w-full items-end overflow-hidden rounded-sm bg-white/10">
-                    <div className="w-full bg-pink/70" style={{ height: `${c ? Math.max(12, (c / max) * 100) : 0}%` }} />
-                  </div>
-                  <div className="text-[8px] text-white/45">{n}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
@@ -419,272 +372,22 @@ export function NpsResultsScreen() {
               </div>
               {openResults === s.id && results.data && (
                 <div className="mt-3 rounded-xl bg-black/20 p-3 text-white">
-                  <div className="grid grid-cols-4 gap-2 text-center text-[11px]">
-                    <div><div className="text-lg font-bold">{results.data.nps}</div><div className="text-white/60">NPS</div></div>
-                    <div><div className="text-lg font-bold text-magic-green">{results.data.promoters}</div><div className="text-white/60">Promotores</div></div>
-                    <div><div className="text-lg font-bold text-magic-amber">{results.data.passives}</div><div className="text-white/60">Neutros</div></div>
-                    <div><div className="text-lg font-bold text-magic-red">{results.data.detractors}</div><div className="text-white/60">Detratores</div></div>
-                  </div>
-                  <NpsQuestionStats questions={results.data.questions} />
+                  {results.data.kind !== "quiz" && (
+                    <div className="grid grid-cols-4 gap-2 text-center text-[11px]">
+                      <div><div className="text-lg font-bold">{results.data.nps}</div><div className="text-white/60">NPS</div></div>
+                      <div><div className="text-lg font-bold text-magic-green">{results.data.promoters}</div><div className="text-white/60">Promotores</div></div>
+                      <div><div className="text-lg font-bold text-magic-amber">{results.data.passives}</div><div className="text-white/60">Neutros</div></div>
+                      <div><div className="text-lg font-bold text-magic-red">{results.data.detractors}</div><div className="text-white/60">Detratores</div></div>
+                    </div>
+                  )}
+                  <NpsQuestionStats questions={results.data.questions} nps={results.data.kind !== "quiz"} showSingle={results.data.kind === "quiz"} />
                   <div className="mt-3 space-y-1 max-h-40 overflow-auto">
                     {(results.data.comments ?? []).filter((c: any) => c.comment).map((c: any, i: number) => (
                       <div key={i} className="rounded-lg bg-white/5 px-3 py-1.5 text-[12px]">
-                        <span className="font-bold mr-2">{c.score}</span>{c.comment}
+                        {results.data.kind !== "quiz" && <span className="font-bold mr-2">{c.score}</span>}{c.comment}
                       </div>
                     ))}
                     {results.data.total === 0 && <div className="text-[12px] text-white/60">Seu time ainda não respondeu.</div>}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {list.data && list.data.length === 0 && (
-          <div className="glass-chip rounded-2xl p-6 text-center text-[13px] text-white/70">
-            Nenhuma pesquisa NPS ainda.
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function NpsAdminBlock() {
-  const listFn = useServerFn(listNpsSurveys);
-  const createFn = useServerFn(createNpsSurvey);
-  const closeFn = useServerFn(closeNpsSurvey);
-  const resultsFn = useServerFn(getNpsResults);
-  const historyFn = useServerFn(getNpsHistory);
-  const qc = useQueryClient();
-  const list = useQuery({ queryKey: ["nps-surveys"], queryFn: () => listFn() });
-  const history = useQuery({ queryKey: ["nps-history"], queryFn: () => historyFn() });
-  const [title, setTitle] = useState("Sua opinião importa");
-  const [question, setQuestion] = useState(
-    "Em uma escala de 0 a 10, o quanto você recomendaria trabalhar na Hector Studios para um amigo?",
-  );
-  const [days, setDays] = useState(2);
-  // perguntas extras (cada uma nota de 0 a 10), além da principal
-  const [extras, setExtras] = useState<string[]>([]);
-  const cleanExtras = extras.map((t) => t.trim()).filter(Boolean);
-  const extrasInvalid = cleanExtras.some((t) => t.length < 3);
-  const [openResults, setOpenResults] = useState<string | null>(null);
-
-  const create = useMutation({
-    mutationFn: () => {
-      const opens = new Date();
-      const closes = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-      return createFn({
-        data: {
-          title,
-          question,
-          extra_questions: cleanExtras.length ? cleanExtras : undefined,
-          opens_at: opens.toISOString(),
-          closes_at: closes.toISOString(),
-        },
-      });
-    },
-    onSuccess: () => {
-      setExtras([]);
-      toast.success("Pesquisa NPS publicada");
-      qc.invalidateQueries({ queryKey: ["nps-surveys"] });
-      qc.invalidateQueries({ queryKey: ["nps-active"] });
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  const close = useMutation({
-    mutationFn: (id: string) => closeFn({ data: { id } }),
-    onSuccess: () => {
-      toast.success("Encerrada");
-      qc.invalidateQueries({ queryKey: ["nps-surveys"] });
-      qc.invalidateQueries({ queryKey: ["nps-active"] });
-    },
-  });
-
-  const results = useQuery({
-    queryKey: ["nps-results", openResults],
-    queryFn: () => resultsFn({ data: { survey_id: openResults! } }),
-    enabled: !!openResults,
-  });
-
-  return (
-    <div className="mt-10">
-      <div className="mb-3 px-1">
-        <div className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-white/60">
-          NPS mensal
-        </div>
-        <h2 className="mt-1 font-display text-[22px] font-black tracking-[-0.03em] text-white">
-          Pulse do elenco
-        </h2>
-      </div>
-
-      <div className="glass-strong rounded-[26px] p-5">
-        <label className="block">
-          <span className="ml-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
-            Título (curto, aparece fechado no card)
-          </span>
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="glass-input mt-2 w-full rounded-2xl px-4 py-3 text-[14px] text-white outline-none"
-          />
-        </label>
-        <label className="mt-3 block">
-          <span className="ml-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
-            Pergunta principal (o texto que a pessoa lê, nota de 0 a 10)
-          </span>
-          <textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            rows={3}
-            className="glass-input mt-2 w-full resize-none rounded-2xl px-4 py-3 text-[14px] text-white outline-none"
-          />
-        </label>
-        <div className="mt-3">
-          <span className="ml-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
-            Perguntas extras (opcional)
-          </span>
-          <p className="ml-1 mt-1 text-[11.5px] text-white/50">
-            Cada uma também vira uma nota de 0 a 10. A principal (acima) é a que conta pro NPS; as extras viram nota média.
-          </p>
-          {extras.map((t, i) => (
-            <div key={i} className="mt-2 flex items-start gap-2">
-              <textarea
-                value={t}
-                onChange={(e) => setExtras((prev) => prev.map((x, j) => (j === i ? e.target.value : x)))}
-                rows={2}
-                placeholder={`Pergunta ${i + 2}`}
-                className="glass-input w-full resize-none rounded-2xl px-4 py-3 text-[14px] text-white outline-none placeholder:text-white/40"
-              />
-              <button
-                type="button"
-                onClick={() => setExtras((prev) => prev.filter((_, j) => j !== i))}
-                className="mt-1 shrink-0 rounded-full p-2 text-white/60 transition hover:bg-white/10"
-                aria-label="Remover pergunta"
-              >
-                <X size={15} />
-              </button>
-            </div>
-          ))}
-          {extras.length < 15 && (
-            <button
-              type="button"
-              onClick={() => setExtras((prev) => [...prev, ""])}
-              className="glass-chip mt-2 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[12.5px] font-semibold text-white/85"
-            >
-              <Plus size={14} /> Adicionar pergunta
-            </button>
-          )}
-        </div>
-        <label className="mt-3 block">
-          <span className="ml-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
-            Janela (dias)
-          </span>
-          <input
-            type="number"
-            min={1}
-            max={7}
-            value={days}
-            onChange={(e) => setDays(Math.max(1, Math.min(7, Number(e.target.value) || 1)))}
-            className="glass-input mt-2 w-24 rounded-2xl px-4 py-3 text-[14px] text-white outline-none"
-          />
-        </label>
-        <button
-          onClick={() => create.mutate()}
-          disabled={create.isPending || !title.trim() || !question.trim() || extrasInvalid}
-          className="mt-4 w-full rounded-2xl bg-brand-grad px-5 py-3 text-[14px] font-semibold text-white shadow-glow disabled:opacity-50"
-        >
-          {create.isPending ? "Publicando..." : "Publicar pesquisa"}
-        </button>
-      </div>
-
-      {(history.data?.history.filter((h) => h.total > 0).length ?? 0) > 1 && (
-        <div className="mt-4 glass-strong rounded-[26px] p-5">
-          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/70">
-            Evolução do NPS
-          </div>
-          <div className="flex items-end gap-2.5 overflow-x-auto pb-1">
-            {(history.data?.history ?? [])
-              .filter((h) => h.total > 0)
-              .map((h) => {
-                const pct = ((h.nps ?? 0) + 100) / 2; // -100..100 -> 0..100%
-                const color =
-                  (h.nps ?? 0) >= 50
-                    ? "bg-magic-green"
-                    : (h.nps ?? 0) >= 0
-                      ? "bg-magic-amber"
-                      : "bg-magic-red";
-                return (
-                  <div key={h.survey_id} className="flex w-12 shrink-0 flex-col items-center gap-1.5">
-                    <div className="text-[12px] font-bold text-white">{h.nps}</div>
-                    <div className="h-20 w-full overflow-hidden rounded-lg bg-white/10">
-                      <div
-                        className={`w-full ${color}`}
-                        style={{ height: `${Math.max(4, pct)}%`, marginTop: `${100 - Math.max(4, pct)}%` }}
-                      />
-                    </div>
-                    <div className="text-[10px] capitalize text-white/60">{h.month}</div>
-                  </div>
-                );
-              })}
-          </div>
-        </div>
-      )}
-
-      <div className="mt-4 grid gap-2">
-        {(list.data ?? []).map((s: any) => {
-          const now = Date.now();
-          const isActive = s.active && new Date(s.opens_at).getTime() <= now && new Date(s.closes_at).getTime() >= now;
-          return (
-            <div key={s.id} className="glass-chip rounded-2xl p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="font-display text-[14px] font-bold text-white">{s.title}</div>
-                  <div className="mt-1 text-[11px] text-white/60">
-                    {new Date(s.opens_at).toLocaleDateString("pt-BR")} → {new Date(s.closes_at).toLocaleDateString("pt-BR")}
-                    {isActive ? " · ativa" : " · encerrada"}
-                    {Array.isArray(s.extra_questions) && s.extra_questions.length > 0
-                      ? ` · ${s.extra_questions.length + 1} perguntas`
-                      : ""}
-                  </div>
-                </div>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => setOpenResults(openResults === s.id ? null : s.id)}
-                    className="rounded-lg bg-white/10 border border-white/20 px-2 py-1 text-[11px] hover:bg-white/20"
-                  >
-                    Resultados
-                  </button>
-                  {isActive && (
-                    <button
-                      onClick={() =>
-                        confirmAction(`Encerrar a pesquisa "${s.title}"? Ninguém mais vai conseguir responder.`, () =>
-                          close.mutate(s.id),
-                        )
-                      }
-                      className="rounded-lg bg-magic-red/20 border border-magic-red/30 px-2 py-1 text-[11px] hover:bg-magic-red/30"
-                    >
-                      Encerrar
-                    </button>
-                  )}
-                </div>
-              </div>
-              {openResults === s.id && results.data && (
-                <div className="mt-3 rounded-xl bg-black/20 p-3 text-white">
-                  <div className="grid grid-cols-4 gap-2 text-center text-[11px]">
-                    <div><div className="text-lg font-bold">{results.data.nps}</div><div className="text-white/60">NPS</div></div>
-                    <div><div className="text-lg font-bold text-magic-green">{results.data.promoters}</div><div className="text-white/60">Promotores</div></div>
-                    <div><div className="text-lg font-bold text-magic-amber">{results.data.passives}</div><div className="text-white/60">Neutros</div></div>
-                    <div><div className="text-lg font-bold text-magic-red">{results.data.detractors}</div><div className="text-white/60">Detratores</div></div>
-                  </div>
-                  <NpsQuestionStats questions={results.data.questions} />
-                  <div className="mt-3 space-y-1 max-h-40 overflow-auto">
-                    {(results.data.comments ?? []).filter((c: any) => c.comment).map((c: any, i: number) => (
-                      <div key={i} className="rounded-lg bg-white/5 px-3 py-1.5 text-[12px]">
-                        <span className="font-bold mr-2">{c.score}</span>{c.comment}
-                      </div>
-                    ))}
-                    {results.data.total === 0 && <div className="text-[12px] text-white/60">Ainda sem respostas.</div>}
                   </div>
                 </div>
               )}

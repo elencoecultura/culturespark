@@ -897,6 +897,7 @@ export type Database = {
           created_by: string | null
           extra_questions: Json
           id: string
+          kind: string
           opens_at: string
           question: string
           title: string
@@ -908,6 +909,7 @@ export type Database = {
           created_by?: string | null
           extra_questions?: Json
           id?: string
+          kind?: string
           opens_at?: string
           question?: string
           title?: string
@@ -919,6 +921,7 @@ export type Database = {
           created_by?: string | null
           extra_questions?: Json
           id?: string
+          kind?: string
           opens_at?: string
           question?: string
           title?: string

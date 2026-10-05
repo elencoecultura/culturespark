@@ -23,6 +23,7 @@ import {
   Medal,
   Award,
   Star,
+  ClipboardList,
   Lock,
   Sun,
   Mic,
@@ -74,6 +75,7 @@ import { BusinessProvider, useBusiness } from "./BusinessContext";
 import BusinessSelector from "./BusinessSelector";
 import { getDailyPhrase, getPillar } from "@/lib/culture-content";
 import { NotificationsBell, BroadcastAdminScreen, NpsResultsScreen } from "./Notifications";
+import { PesquisasAdmin } from "./Pesquisas";
 import WellbeingTimelineScreen from "./WellbeingTimelineScreen";
 import { NpsBanner, HomeNotifications } from "./HomeExtras";
 import CultureOverview from "./CultureOverview";
@@ -1958,7 +1960,7 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
 
 /* ---------- Shell ---------- */
 
-type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "kudos-audit" | "iluminari-admin" | "checkins-dashboard" | "culture-overview" | "install-guide" | "accounts-admin" | "nps-results" | "wellbeing-timeline";
+type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "kudos-audit" | "iluminari-admin" | "checkins-dashboard" | "culture-overview" | "install-guide" | "accounts-admin" | "nps-results" | "wellbeing-timeline" | "pesquisas";
 
 function BottomNav({
   active,
@@ -2076,7 +2078,7 @@ export default function LinkCulturaApp() {
       // Resultado de NPS pode ter comentário livre da pessoa — só gerente/
       // direção/admin vê (líder comum reporta pro gerente, não pode ver o
       // que é do escopo do próprio gerente dele).
-      if (isAdmin || isGerente || isDirecao) {
+      if (!isAdmin && (isGerente || isDirecao)) {
         gestao.push({ id: "nps-results", label: "Resultados do NPS", icon: Star, desc: "NPS e evolução da sua casa" });
       }
       // Evolução do bem-estar: sem comentário livre (só humor numérico), então
@@ -2092,6 +2094,7 @@ export default function LinkCulturaApp() {
     if (isAdmin) {
       const adminItems: { id: TabId; label: string; icon: LucideIcon; desc: string }[] = [
         { id: "culture-overview", label: "Indicadores de cultura", icon: Gauge, desc: "Painel geral com tudo num só lugar" },
+        { id: "pesquisas", label: "Pesquisas (NPS)", icon: ClipboardList, desc: "Criar pesquisas com várias perguntas e ver as respostas" },
         { id: "accounts-admin", label: "Contas cadastradas", icon: KeyRound, desc: "Trocar email, senha ou gerar link de acesso" },
         { id: "broadcast", label: "Enviar recado", icon: Send, desc: "Notificar todo o elenco" },
         { id: "flagged-kudos", label: "Elogios sinalizados", icon: Flag, desc: "Revisar mensagens marcadas pela moderação" },
@@ -2154,6 +2157,7 @@ export default function LinkCulturaApp() {
       case "analytics": return <GamificationAnalyticsAdmin />;
       case "broadcast": return <BroadcastAdminScreen />;
       case "nps-results": return <NpsResultsScreen />;
+      case "pesquisas": return <PesquisasAdmin />;
       case "wellbeing-timeline": return <WellbeingTimelineScreen isAdmin={isAdmin} />;
       default: return <HomeScreen name={name} go={setTab} isAdmin={isAdmin} isLeader={isLeader} />;
     }
