@@ -1460,7 +1460,9 @@ function IluminariScreen({ myUserId, isAdmin }: { myUserId: string; isAdmin: boo
   const listFn = useServerFn(listIluminari);
   const createFn = useServerFn(createIluminari);
   const deleteFn = useServerFn(deleteIluminari);
-  const { data: moments } = useQuery({ queryKey: ["iluminari"], queryFn: () => listFn() });
+  // Relato de Iluminari é reservado: só admin enxerga a linha do tempo. Quem
+  // não é admin só envia (o servidor e o banco também bloqueiam a leitura).
+  const { data: moments } = useQuery({ queryKey: ["iluminari"], queryFn: () => listFn(), enabled: isAdmin });
 
   const [message, setMessage] = useState("");
   const [images, setImages] = useState<File[]>([]);
@@ -1573,7 +1575,11 @@ function IluminariScreen({ myUserId, isAdmin }: { myUserId: string; isAdmin: boo
       <TopBar
         eyebrow="Momentos Iluminari"
         title="Conta esse brilho"
-        subtitle="Aquela cena que iluminou o dia. Texto, áudio ou foto."
+        subtitle={
+          isAdmin
+            ? "Aquela cena que iluminou o dia. Texto, áudio ou foto."
+            : "Aquela cena que iluminou o dia. Texto, áudio ou foto. Só a administração vê o que você conta."
+        }
       />
 
       <div className="mt-5">
@@ -1656,54 +1662,60 @@ function IluminariScreen({ myUserId, isAdmin }: { myUserId: string; isAdmin: boo
         </GlassCard>
       </div>
 
-      <div className="mt-6 grid gap-3">
-        <SectionTitle>Linha do tempo</SectionTitle>
-        {(moments ?? []).length === 0 && (
-          <Notice>Ainda sem momentos. Seja a primeira luz a brilhar aqui.</Notice>
-        )}
-        {(moments ?? []).map((m) => {
-          const canDelete = m.author?.id === myUserId || isAdmin;
-          return (
-            <GlassCard key={m.id}>
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-[13.5px] font-semibold">
-                    <Sun size={14} className="text-pink" />
-                    {m.author?.full_name || "Alguém do elenco"}
+      {isAdmin ? (
+        <div className="mt-6 grid gap-3">
+          <SectionTitle>Linha do tempo</SectionTitle>
+          {(moments ?? []).length === 0 && (
+            <Notice>Ainda sem momentos. Seja a primeira luz a brilhar aqui.</Notice>
+          )}
+          {(moments ?? []).map((m) => {
+            const canDelete = m.author?.id === myUserId || isAdmin;
+            return (
+              <GlassCard key={m.id}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-[13.5px] font-semibold">
+                      <Sun size={14} className="text-pink" />
+                      {m.author?.full_name || "Alguém do elenco"}
+                    </div>
+                    <div className="text-[11px] uppercase tracking-[0.14em] text-white/55">
+                      {m.author?.attraction || "—"} · {timeAgo(m.created_at)}
+                    </div>
                   </div>
-                  <div className="text-[11px] uppercase tracking-[0.14em] text-white/55">
-                    {m.author?.attraction || "—"} · {timeAgo(m.created_at)}
-                  </div>
+                  {canDelete && (
+                    <button
+                      onClick={() => del.mutate(m.id)}
+                      className="grid h-8 w-8 place-items-center rounded-full text-white/60 hover:text-white"
+                      aria-label="Apagar"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
-                {canDelete && (
-                  <button
-                    onClick={() => del.mutate(m.id)}
-                    className="grid h-8 w-8 place-items-center rounded-full text-white/60 hover:text-white"
-                    aria-label="Apagar"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                {m.message && (
+                  <p className="mt-3 whitespace-pre-wrap text-[13.5px] leading-relaxed text-white/90">{m.message}</p>
                 )}
-              </div>
-              {m.message && (
-                <p className="mt-3 whitespace-pre-wrap text-[13.5px] leading-relaxed text-white/90">{m.message}</p>
-              )}
-              {m.image_urls.length > 0 && (
-                <div className={cn("mt-3 grid gap-1.5", m.image_urls.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
-                  {m.image_urls.map((u, i) => (
-                    <a key={i} href={u} target="_blank" rel="noopener noreferrer" className="overflow-hidden rounded-xl">
-                      <img src={u} alt="" className="h-full w-full object-cover" loading="lazy" />
-                    </a>
-                  ))}
-                </div>
-              )}
-              {m.audio_url && (
-                <audio src={m.audio_url} controls className="mt-3 w-full" />
-              )}
-            </GlassCard>
-          );
-        })}
-      </div>
+                {m.image_urls.length > 0 && (
+                  <div className={cn("mt-3 grid gap-1.5", m.image_urls.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
+                    {m.image_urls.map((u, i) => (
+                      <a key={i} href={u} target="_blank" rel="noopener noreferrer" className="overflow-hidden rounded-xl">
+                        <img src={u} alt="" className="h-full w-full object-cover" loading="lazy" />
+                      </a>
+                    ))}
+                  </div>
+                )}
+                {m.audio_url && (
+                  <audio src={m.audio_url} controls className="mt-3 w-full" />
+                )}
+              </GlassCard>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="mt-4 px-1 text-[12px] leading-relaxed text-white/55">
+          Seu relato fica reservado: não aparece pro elenco, só pra administração.
+        </p>
+      )}
     </>
   );
 }
