@@ -32,17 +32,9 @@ export const createIluminari = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-// Relato de Iluminari é reservado: só admin lê (o elenco só envia). Quem não é
-// admin recebe lista vazia; o banco também bloqueia a leitura (migration
-// 20261006120000_iluminari_somente_admin).
 export const listIluminari = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data: isAdmin } = await context.supabase.rpc("has_role", {
-      _user_id: context.userId,
-      _role: "admin",
-    });
-    if (!isAdmin) return [];
     const { data: rows, error } = await context.supabase
       .from("iluminari_moments")
       .select("*")
