@@ -52,8 +52,26 @@ export const generateEvaluationPdf = createServerFn({ method: "POST" })
     const dark = rgb(0.1, 0.1, 0.15);
     const gray = rgb(0.45, 0.45, 0.5);
 
+    // A fonte padrão do PDF (Helvetica/WinAnsi) não desenha caracteres de
+    // controle (ex.: U+0087 que vem de planilha importada), emoji nem quebra
+    // de linha, e o pdf-lib lança erro em vez de pular — o PDF inteiro falhava.
+    // Troca quebra de linha por espaço e descarta o que a fonte não suporta.
+    const WIN_ANSI_EXTRA = new Set([
+      0x20ac, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021, 0x02c6, 0x2030, 0x0160, 0x2039, 0x0152, 0x017d,
+      0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014, 0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0x017e, 0x0178,
+    ]);
+    const clean = (text: unknown) =>
+      Array.from(String(text ?? "").replace(/[\r\n\t]+/g, " "))
+        .filter((ch) => {
+          const c = ch.codePointAt(0)!;
+          return (c >= 0x20 && c <= 0x7e) || (c >= 0xa0 && c <= 0xff) || WIN_ANSI_EXTRA.has(c);
+        })
+        .join("")
+        .replace(/ {2,}/g, " ")
+        .trim();
+
     const drawText = (text: string, opts: { x?: number; size?: number; f?: any; color?: any } = {}) => {
-      page.drawText(text, {
+      page.drawText(clean(text), {
         x: opts.x ?? margin,
         y,
         size: opts.size ?? 10,
@@ -163,7 +181,14 @@ export const generateEvaluationPdf = createServerFn({ method: "POST" })
     const bytes = await doc.save();
     const b64 = Buffer.from(bytes).toString("base64");
     return {
-      filename: `avaliacao-${(profile?.full_name ?? "elenco").replace(/\s+/g, "_")}.pdf`,
+      // nome de arquivo só com letras/números/_/- (sem acento, controle ou ponto solto)
+      filename: `avaliacao-${
+        (profile?.full_name ?? "elenco")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^A-Za-z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "") || "elenco"
+      }.pdf`,
       dataUrl: `data:application/pdf;base64,${b64}`,
     };
   });
