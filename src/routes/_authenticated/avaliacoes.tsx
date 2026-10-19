@@ -13,6 +13,7 @@ import {
   createCycle,
   openCycleAndGenerate,
   listMyEvaluations,
+  publishEvaluation,
   listTeamEvaluations,
   getEvaluationDetail,
   saveScore,
@@ -769,13 +770,18 @@ function EvaluationDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const saveScoreFn = useServerFn(saveScore);
   const setStatusFn = useServerFn(updateEvaluationStatus);
   const { userId } = useCurrentUser().data ?? ({} as any);
+  const { isAdmin } = useCurrentUser();
 
   const d = useQuery({ queryKey: ["eval", id], queryFn: () => detailFn({ data: { evaluation_id: id } }) });
   const meta = useQuery({ queryKey: ["eval-meta"], queryFn: () => metaFn() });
 
+  // O avaliado só lê: vê o resultado publicado, sem editar nada.
+  const isEvaluator = (d.data?.evaluators ?? []).some((e: any) => e.evaluator_id === userId);
+  const readOnly = !!d.data && (d.data.evaluation as any)?.evaluatee_id === userId && !isAdmin && !isEvaluator;
+
   const scoreMap = new Map<string, any>();
   (d.data?.scores ?? []).forEach((s: any) => {
-    if (!s.scored_by || s.scored_by === userId) scoreMap.set(s.competency_id, s);
+    if (readOnly || !s.scored_by || s.scored_by === userId) scoreMap.set(s.competency_id, s);
   });
 
   const saveMut = useMutation({
@@ -789,6 +795,17 @@ function EvaluationDetail({ id, onBack }: { id: string; onBack: () => void }) {
     onSuccess: () => {
       toast.success("Status atualizado");
       qc.invalidateQueries({ queryKey: ["eval", id] });
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const publishFn = useServerFn(publishEvaluation);
+  const publishMut = useMutation({
+    mutationFn: (publish: boolean) => publishFn({ data: { evaluation_id: id, publish } }),
+    onSuccess: (_r, publish) => {
+      toast.success(publish ? "Avaliação publicada — o colaborador já consegue ver" : "Publicação recolhida");
+      qc.invalidateQueries({ queryKey: ["eval", id] });
+      qc.invalidateQueries({ queryKey: ["team-evals"] });
     },
     onError: (e: any) => toast.error(e.message),
   });
@@ -844,19 +861,49 @@ function EvaluationDetail({ id, onBack }: { id: string; onBack: () => void }) {
                     {scoredCount} de {totalComps} competências
                   </div>
                   <div className="mt-0.5 text-[12.5px] text-white/70">
-                    {overallAvg != null ? <>Média atual <b className="text-white">{overallAvg}</b> / 5</> : "Comece a pontuar abaixo."}
+                    {overallAvg != null ? <>Média atual <b className="text-white">{overallAvg}</b> / 5</> : readOnly ? "Ainda sem notas." : "Comece a pontuar abaixo."}
                   </div>
                 </div>
               </div>
-              <div className="mt-4">
-                <StatusStepper status={ev?.status} onSet={(s) => statusMut.mutate(s)} pending={statusMut.isPending} />
-              </div>
+              {!readOnly && (
+                <div className="mt-4">
+                  <StatusStepper status={ev?.status} onSet={(s) => statusMut.mutate(s)} pending={statusMut.isPending} />
+                </div>
+              )}
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <PdfButton id={id} />
               </div>
             </Card>
 
-            <ScaleHelp />
+            {!readOnly && (
+              <Card>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55">Visível para {ev?.profiles?.full_name?.split(" ")[0] ?? "o colaborador"}</div>
+                    <div className="mt-1 font-display text-[16px] font-black tracking-[-0.02em]">
+                      {ev?.published_at ? "Publicada" : "Ainda não publicada"}
+                    </div>
+                    <p className="mt-1 text-[12px] text-white/65">
+                      {ev?.published_at
+                        ? `Desde ${new Date(ev.published_at).toLocaleDateString("pt-BR")}. A pessoa vê notas, espírito mágico e PDIs em Minha evolução.`
+                        : "Enquanto não publicar, só você, a liderança e o admin enxergam. Publique quando terminar notas e PDIs."}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => publishMut.mutate(!ev?.published_at)}
+                    disabled={publishMut.isPending || (!ev?.published_at && progressPct < 100)}
+                    className={ev?.published_at ? BTN_CHIP : cn(BTN_PRIMARY, "shrink-0")}
+                  >
+                    {publishMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : ev?.published_at ? "Recolher" : "Publicar"}
+                  </button>
+                </div>
+                {!ev?.published_at && progressPct < 100 && (
+                  <p className="mt-2 text-[11px] text-magic-amber">Falta pontuar {totalComps - scoredCount} competência(s) para publicar.</p>
+                )}
+              </Card>
+            )}
+
+            {!readOnly && <ScaleHelp />}
 
             <SectionHeader icon={TrendingUp} title="Escada pra Magia" />
             {pillars.map((p: any) => (
@@ -866,13 +913,14 @@ function EvaluationDetail({ id, onBack }: { id: string; onBack: () => void }) {
                 comps={comps.filter((c: any) => c.pillar_id === p.id)}
                 scoreMap={scoreMap}
                 onScore={(competency_id, score) => saveMut.mutate({ competency_id, score })}
+                readOnly={readOnly}
               />
             ))}
 
-            <SpiritSection evaluation={ev} onSet={(key, value) => spiritsMut.mutate({ [key]: value })} />
+            <SpiritSection evaluation={ev} onSet={(key, value) => spiritsMut.mutate({ [key]: value })} readOnly={readOnly} />
 
-            <PdiSection evaluationId={id} pdis={d.data?.pdis ?? []} comps={comps} />
-            <DocumentsSection evaluationId={id} />
+            <PdiSection evaluationId={id} pdis={d.data?.pdis ?? []} comps={comps} readOnly={readOnly} />
+            <DocumentsSection evaluationId={id} readOnly={readOnly} />
           </>
         )}
       </div>
@@ -981,9 +1029,11 @@ const SPIRIT_LEVELS = [
 function SpiritSection({
   evaluation,
   onSet,
+  readOnly = false,
 }: {
   evaluation: any;
   onSet: (key: string, value: string) => void;
+  readOnly?: boolean;
 }) {
   return (
     <Card>
@@ -1002,8 +1052,9 @@ function SpiritSection({
                   <button
                     key={lvl.value}
                     onClick={() => onSet(key, lvl.value)}
+                    disabled={readOnly}
                     className={cn(
-                      "rounded-xl px-2 py-2 text-[12px] font-semibold transition",
+                      "rounded-xl px-2 py-2 text-[12px] font-semibold transition disabled:cursor-default",
                       current === lvl.value ? "bg-brand-grad text-white shadow-glow" : "bg-white/10 text-white/75 hover:bg-white/15",
                     )}
                   >
@@ -1024,11 +1075,13 @@ function PillarSection({
   comps,
   scoreMap,
   onScore,
+  readOnly = false,
 }: {
   pillar: any;
   comps: any[];
   scoreMap: Map<string, any>;
   onScore: (competencyId: string, score: number) => void;
+  readOnly?: boolean;
 }) {
   const accent = pillarAccent(pillar.name);
   const scored = comps.filter((c) => typeof scoreMap.get(c.id)?.score === "number");
@@ -1045,7 +1098,7 @@ function PillarSection({
             <h3 className="font-display text-[17px] font-black tracking-[-0.02em]">{pillar.name}</h3>
           </div>
           {pillar.description && <p className="mt-1 text-[12px] text-white/60">{pillar.description}</p>}
-          {hasGuide && (
+          {hasGuide && !readOnly && (
             <button
               type="button"
               onClick={() => setShowGuide(true)}
@@ -1063,7 +1116,7 @@ function PillarSection({
       <div className={cn("mb-4 h-1 rounded-full bg-gradient-to-r opacity-80", accent.grad)} />
       <div className="space-y-3">
         {comps.map((c) => (
-          <CompetencyRow key={c.id} comp={c} current={scoreMap.get(c.id)?.score ?? 0} onScore={(n) => onScore(c.id, n)} />
+          <CompetencyRow key={c.id} comp={c} current={scoreMap.get(c.id)?.score ?? 0} onScore={(n) => onScore(c.id, n)} readOnly={readOnly} />
         ))}
       </div>
 
@@ -1088,7 +1141,7 @@ function PillarSection({
   );
 }
 
-function CompetencyRow({ comp, current, onScore }: { comp: any; current: number; onScore: (n: number) => void }) {
+function CompetencyRow({ comp, current, onScore, readOnly = false }: { comp: any; current: number; onScore: (n: number) => void; readOnly?: boolean }) {
   const expected = Number(comp.expected_score ?? 4);
   const below = current > 0 && current < expected;
   const met = current >= expected && current > 0;
@@ -1111,8 +1164,9 @@ function CompetencyRow({ comp, current, onScore }: { comp: any; current: number;
             key={n}
             title={`${n} — ${label}`}
             onClick={() => onScore(n)}
+            disabled={readOnly}
             className={cn(
-              "flex-1 rounded-xl py-2.5 text-sm font-semibold transition",
+              "flex-1 rounded-xl py-2.5 text-sm font-semibold transition disabled:cursor-default",
               current === n ? "bg-brand-grad text-white shadow-glow" : "glass-chip text-white/70 hover:bg-white/15",
             )}
           >
@@ -1136,7 +1190,7 @@ const PDI_STATUS_LABEL: Record<string, string> = {
   cancelado: "Cancelado",
 };
 
-function PdiSection({ evaluationId, pdis, comps }: { evaluationId: string; pdis: any[]; comps: any[] }) {
+function PdiSection({ evaluationId, pdis, comps, readOnly = false }: { evaluationId: string; pdis: any[]; comps: any[]; readOnly?: boolean }) {
   const qc = useQueryClient();
   const savePdiFn = useServerFn(savePdi);
   const [open, setOpen] = useState(false);
@@ -1196,17 +1250,20 @@ function PdiSection({ evaluationId, pdis, comps }: { evaluationId: string; pdis:
         icon={Target}
         title="Plano de Desenvolvimento (PDI)"
         action={
-          <button onClick={openNew} className={BTN_CHIP}>
-            <Plus className="h-4 w-4" /> Novo PDI
-          </button>
+          readOnly ? undefined : (
+            <button onClick={openNew} className={BTN_CHIP}>
+              <Plus className="h-4 w-4" /> Novo PDI
+            </button>
+          )
         }
       />
       <div className="space-y-2">
         {pdis.map((p: any) => (
           <button
             key={p.id}
-            onClick={() => openEdit(p)}
-            className="glass-chip w-full rounded-2xl p-3 text-left transition active:scale-[0.99]"
+            onClick={() => !readOnly && openEdit(p)}
+            disabled={readOnly}
+            className="glass-chip w-full rounded-2xl p-3 text-left transition enabled:active:scale-[0.99] disabled:cursor-default"
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
@@ -1216,7 +1273,7 @@ function PdiSection({ evaluationId, pdis, comps }: { evaluationId: string; pdis:
                 )}
                 {p.actions ? (
                   <div className="mt-1 text-[12px] text-white/65">{p.actions}</div>
-                ) : (
+                ) : readOnly ? null : (
                   <div className="mt-1 text-[12px] text-white/40 italic">Toque pra combinar as ações</div>
                 )}
                 {p.due_on && <div className="mt-1 text-[11px] text-white/50">Prazo: {p.due_on}</div>}
@@ -1231,7 +1288,7 @@ function PdiSection({ evaluationId, pdis, comps }: { evaluationId: string; pdis:
             </div>
           </button>
         ))}
-        {pdis.length === 0 && <Empty>Nenhum PDI ainda. Combine 1 ou 2 objetivos de desenvolvimento.</Empty>}
+        {pdis.length === 0 && <Empty>{readOnly ? "Nenhum PDI combinado nesta avaliação." : "Nenhum PDI ainda. Combine 1 ou 2 objetivos de desenvolvimento."}</Empty>}
       </div>
 
       <BottomSheetModal
@@ -1322,14 +1379,15 @@ function MyMagicSection() {
       </div>
       <h3 className="mb-2 text-[13px] font-semibold uppercase tracking-[0.12em] text-white/70">Meus PDIs</h3>
       <div className="space-y-1.5">
-        {d.pdis.slice(0, 6).map((p: any) => (
+        {d.pdis.map((p: any) => (
           <div key={p.id} className="glass-chip flex items-start justify-between rounded-2xl px-3 py-2">
             <div>
               <div className="text-sm font-medium">{p.objective}</div>
-              {p.due_on && <div className="text-[11px] text-white/50">Prazo: {p.due_on}</div>}
+              {p.actions && <div className="mt-0.5 text-[12px] text-white/65">{p.actions}</div>}
+              {p.due_on && <div className="text-[11px] text-white/50">Prazo: {new Date(p.due_on + "T12:00:00").toLocaleDateString("pt-BR")}</div>}
             </div>
             <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", p.status === "concluido" ? "bg-magic-green/20 text-magic-green" : "bg-white/10 text-white/70")}>
-              {p.status}
+              {PDI_STATUS_LABEL[p.status] ?? p.status}
             </span>
           </div>
         ))}
@@ -1349,7 +1407,7 @@ function Stat({ label, value, tone }: { label: string; value: number | string; t
   );
 }
 
-function DocumentsSection({ evaluationId }: { evaluationId: string }) {
+function DocumentsSection({ evaluationId, readOnly = false }: { evaluationId: string; readOnly?: boolean }) {
   const qc = useQueryClient();
   const listFn = useServerFn(listEvaluationDocuments);
   const attachFn = useServerFn(attachEvaluationDocument);
@@ -1385,10 +1443,12 @@ function DocumentsSection({ evaluationId }: { evaluationId: string }) {
         icon={FileText}
         title="Documento assinado"
         action={
-          <label className={cn(BTN_CHIP, "cursor-pointer")}>
-            <Upload className="h-3.5 w-3.5" /> {uploading ? "Enviando..." : "Enviar PDF"}
-            <input type="file" accept="application/pdf,image/*" className="hidden" onChange={onFile} disabled={uploading} />
-          </label>
+          readOnly ? undefined : (
+            <label className={cn(BTN_CHIP, "cursor-pointer")}>
+              <Upload className="h-3.5 w-3.5" /> {uploading ? "Enviando..." : "Enviar PDF"}
+              <input type="file" accept="application/pdf,image/*" className="hidden" onChange={onFile} disabled={uploading} />
+            </label>
+          )
         }
       />
       <div className="space-y-2">
@@ -1406,7 +1466,7 @@ function DocumentsSection({ evaluationId }: { evaluationId: string }) {
             </div>
           </a>
         ))}
-        {q.data && q.data.length === 0 && <Empty>Envie o PDF assinado para arquivar a avaliação.</Empty>}
+        {q.data && q.data.length === 0 && <Empty>{readOnly ? "O documento assinado aparece aqui quando for anexado." : "Envie o PDF assinado para arquivar a avaliação."}</Empty>}
       </div>
     </Card>
   );

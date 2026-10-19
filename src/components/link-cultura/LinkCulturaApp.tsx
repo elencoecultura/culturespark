@@ -642,16 +642,14 @@ function HomeScreen({ name, go, isAdmin, isLeader }: { name: string; go: (id: Ta
             <span className="glass-chip grid h-10 w-10 place-items-center rounded-full"><MessageCircle size={18} /></span>
             <div className="text-[14px] font-semibold leading-tight tracking-[-0.01em]">Mandar um elogio</div>
           </Tile>
-          {isLeader && (
-            <Tile href="/avaliacoes" className="col-span-2 flex items-center gap-3">
-              <span className="glass-chip grid h-11 w-11 place-items-center rounded-full"><Star size={18} /></span>
-              <div className="min-w-0 flex-1">
-                <div className="text-[15px] font-semibold tracking-[-0.01em]">Avaliações</div>
-                <div className="text-[11.5px] text-white/65">Sua evolução e a do time</div>
-              </div>
-              <ChevronRight size={18} className="text-white/50" />
-            </Tile>
-          )}
+          <Tile href="/avaliacoes" className="col-span-2 flex items-center gap-3">
+            <span className="glass-chip grid h-11 w-11 place-items-center rounded-full"><Star size={18} /></span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[15px] font-semibold tracking-[-0.01em]">{isLeader ? "Avaliações" : "Minha evolução"}</div>
+              <div className="text-[11.5px] text-white/65">{isLeader ? "Sua evolução e a do time" : "Avaliações e PDIs"}</div>
+            </div>
+            <ChevronRight size={18} className="text-white/50" />
+          </Tile>
           {isAdmin && (
             <Tile variant="brand" onClick={() => go("broadcast")} className="col-span-2 flex items-center gap-3">
               <span className="grid h-11 w-11 place-items-center rounded-full bg-white/25"><Send size={18} /></span>

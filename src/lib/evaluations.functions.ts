@@ -396,6 +396,34 @@ export const saveScore = createServerFn({ method: "POST" })
         { onConflict: "evaluation_id,competency_id" },
       );
     if (error) throw new Error(error.message);
+    // Primeira nota lançada tira a avaliação de "Não iniciada".
+    await context.supabase
+      .from("evaluations")
+      .update({ status: "em_andamento" })
+      .eq("id", data.evaluation_id)
+      .eq("status", "nao_iniciada");
+    return { ok: true };
+  });
+
+// Entrega (ou recolhe) a avaliação ao colaborador. Enquanto não publicada,
+// a RLS (can_access_evaluation) esconde notas, espírito, PDIs e documentos dele.
+export const publishEvaluation = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) =>
+    z.object({ evaluation_id: z.string().uuid(), publish: z.boolean() }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: rows, error } = await context.supabase
+      .from("evaluations")
+      .update(
+        data.publish
+          ? { published_at: new Date().toISOString(), published_by: context.userId }
+          : { published_at: null, published_by: null },
+      )
+      .eq("id", data.evaluation_id)
+      .select("id");
+    if (error) throw new Error(error.message);
+    if (!rows?.length) throw new Error("Você não tem permissão para publicar esta avaliação.");
     return { ok: true };
   });
 

@@ -429,6 +429,8 @@ export type Database = {
           meeting_at: string | null
           notes: string | null
           overall_score: number | null
+          published_at: string | null
+          published_by: string | null
           spirit_amar: Database["public"]["Enums"]["spirit_level"] | null
           spirit_honrar: Database["public"]["Enums"]["spirit_level"] | null
           spirit_justo: Database["public"]["Enums"]["spirit_level"] | null
@@ -447,6 +449,8 @@ export type Database = {
           meeting_at?: string | null
           notes?: string | null
           overall_score?: number | null
+          published_at?: string | null
+          published_by?: string | null
           spirit_amar?: Database["public"]["Enums"]["spirit_level"] | null
           spirit_honrar?: Database["public"]["Enums"]["spirit_level"] | null
           spirit_justo?: Database["public"]["Enums"]["spirit_level"] | null
@@ -465,6 +469,8 @@ export type Database = {
           meeting_at?: string | null
           notes?: string | null
           overall_score?: number | null
+          published_at?: string | null
+          published_by?: string | null
           spirit_amar?: Database["public"]["Enums"]["spirit_level"] | null
           spirit_honrar?: Database["public"]["Enums"]["spirit_level"] | null
           spirit_justo?: Database["public"]["Enums"]["spirit_level"] | null
