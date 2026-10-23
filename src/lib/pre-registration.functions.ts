@@ -185,7 +185,8 @@ export const createAccountForPreRegistration = createServerFn({ method: "POST" }
       email: data.email,
       password: data.password,
       email_confirm: true,
-      user_metadata: { full_name: pre.full_name, attraction: pre.negocio, role_title: pre.cargo },
+      user_metadata: { full_name: pre.full_name },
+      app_metadata: { pre_registration_id: pre.id },
     });
     if (error || !created.user) {
       const msg = (error?.message || "").toLowerCase();
@@ -194,6 +195,11 @@ export const createAccountForPreRegistration = createServerFn({ method: "POST" }
       }
       throw new Error(error?.message || "Falha ao criar conta");
     }
+
+    // Vínculo feito pelo servidor com o pré-cadastro escolhido pelo admin
+    // (o trigger não confia mais em nome/atração vindos do metadata).
+    const { applyPreRegistration } = await import("@/lib/pre-registration.server");
+    await applyPreRegistration(created.user.id, pre.id);
 
     const { data: profile } = await supabaseAdmin
       .from("profiles")
@@ -220,7 +226,7 @@ export const lookupPreRegistration = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) =>
     z.object({
       email: z.string().trim().email().optional(),
-      full_name: z.string().trim().min(2).optional(),
+      full_name: z.string().trim().min(2).max(120).optional(),
     }).parse(d),
   )
   .handler(async ({ data }) => {
@@ -245,8 +251,8 @@ export const lookupPreRegistration = createServerFn({ method: "POST" })
 export const searchPreRegistrations = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) =>
     z.object({
-      q: z.string().trim().min(2).max(120),
-      limit: z.number().int().min(1).max(10).optional(),
+      q: z.string().trim().min(3).max(120),
+      limit: z.number().int().min(1).max(5).optional(),
     }).parse(d),
   )
   .handler(async ({ data }) => {

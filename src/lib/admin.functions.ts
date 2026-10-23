@@ -39,7 +39,12 @@ export const listUsers = createServerFn({ method: "GET" })
     const seesAll = tier.isAdmin || hasTodosScope;
     const seesWholeAttraction = seesAll || tier.isGerente || tier.isDirecao;
 
-    let q = supabaseAdmin.from("profiles").select("*").order("full_name");
+    // Colunas explícitas: a tela de Elenco não usa cpf, wifi_bypass nem
+    // first_login_at, e antes ia tudo (select *) pra qualquer liderança.
+    let q = supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, attraction, negocio, setor, role_title, hero_id, active, weekly_hours, days_off, manager_id, co_leader_id, area, department, birth_date, created_at, updated_at")
+      .order("full_name");
     if (!seesAll) {
       q = seesWholeAttraction
         ? q.eq("attraction", myProfile?.attraction ?? "__none__")
@@ -125,6 +130,10 @@ export const updateUser = createServerFn({ method: "POST" })
       const { error } = await (supabaseAdmin.from("profiles") as any).update(patch).eq("id", id);
       if (error) throw new Error(error.message);
     }
+    if (data.active !== undefined) {
+      const { syncAccountBan } = await import("@/lib/account-ban.server");
+      await syncAccountBan(id, data.active);
+    }
     if (role) {
       await supabaseAdmin.from("user_roles").delete().eq("user_id", id);
       await supabaseAdmin.from("user_roles").insert({ user_id: id, role });
@@ -135,7 +144,10 @@ export const updateUser = createServerFn({ method: "POST" })
 export const getMyContext = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data: profile } = await context.supabase
+    // Próprio perfil completo (inclui e-mail): lido com service role porque o
+    // browser não tem mais SELECT nas colunas internas de profiles.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: profile } = await supabaseAdmin
       .from("profiles")
       .select("*")
       .eq("id", context.userId)

@@ -72,7 +72,7 @@ function CadastroPage() {
               full_name: name.length >= 2 ? name : undefined,
             },
           }),
-          name.length >= 2
+          name.length >= 3
             ? search({ data: { q: name, limit: 5 } })
             : Promise.resolve([] as MatchRow[]),
         ]);

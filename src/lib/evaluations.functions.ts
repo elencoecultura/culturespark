@@ -344,7 +344,10 @@ export const getEvaluationDetail = createServerFn({ method: "GET" })
       .eq("id", data.evaluation_id)
       .single();
     if (error) throw new Error(error.message);
-    const { data: profile } = await context.supabase
+    // A avaliação acima já passou pela RLS (quem chama pode vê-la); o e-mail
+    // do avaliado vem pelo service role porque o browser não lê mais e-mail.
+    const { supabaseAdmin: adminForProfile } = await import("@/integrations/supabase/client.server");
+    const { data: profile } = await adminForProfile
       .from("profiles")
       .select("full_name,attraction,role_title,email")
       .eq("id", ev.evaluatee_id)
@@ -805,8 +808,8 @@ export const attachEvaluationDocument = createServerFn({ method: "POST" })
     z
       .object({
         evaluation_id: z.string().uuid(),
-        storage_path: z.string().min(3),
-        mime_type: z.string().default("application/pdf"),
+        storage_path: z.string().min(3).max(300),
+        mime_type: z.string().max(100).default("application/pdf"),
         // O banco só aceita 'gerado' | 'assinado' (CHECK evaluation_documents_kind_check).
         // "assinada" (feminino) era o valor que a tela enviava e sempre falhava; segue
         // aceito aqui pra versões antigas do app abertas em cache.
@@ -818,6 +821,12 @@ export const attachEvaluationDocument = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    // O arquivo tem de estar na pasta desta avaliação: a leitura do bucket
+    // casa pelo storage_path, então apontar para o PDF de outra avaliação
+    // dava acesso a ele.
+    if (!data.storage_path.startsWith(`${data.evaluation_id}/`) || data.storage_path.includes("..")) {
+      throw new Error("Arquivo inválido para esta avaliação.");
+    }
     const { data: row, error } = await context.supabase
       .from("evaluation_documents")
       .insert({
@@ -830,11 +839,13 @@ export const attachEvaluationDocument = createServerFn({ method: "POST" })
       .select()
       .single();
     if (error) throw new Error(error.message);
-    // marca avaliação como concluída quando doc anexado
-    await context.supabase
-      .from("evaluations")
-      .update({ status: "concluida", completed_at: new Date().toISOString() })
-      .eq("id", data.evaluation_id);
+    // marca avaliação como concluída quando o documento ASSINADO é anexado
+    if (data.kind === "assinado") {
+      await context.supabase
+        .from("evaluations")
+        .update({ status: "concluida", completed_at: new Date().toISOString() })
+        .eq("id", data.evaluation_id);
+    }
     return row;
   });
 

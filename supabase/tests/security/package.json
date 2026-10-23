@@ -1,0 +1,13 @@
+{
+  "name": "culture-spark-db-security-tests",
+  "private": true,
+  "type": "module",
+  "description": "Testes de RLS/permissões num Postgres em memória (PGlite). Não usa o banco de produção.",
+  "scripts": {
+    "test": "bun run.mjs ../../migrations/20261023120000_auditoria_seguranca.sql",
+    "test:rollback": "bun run.mjs ../../migrations/20261023120000_auditoria_seguranca.sql ../../rollback/20261023120000_auditoria_seguranca_rollback.sql"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.2.17"
+  }
+}

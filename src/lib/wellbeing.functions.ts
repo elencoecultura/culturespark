@@ -11,7 +11,8 @@ const WINDOW_DAYS = 60;
 export const getMoodConcerns = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data: me } = await context.supabase
+    const { supabaseAdmin: adminForMe } = await import("@/integrations/supabase/client.server");
+    const { data: me } = await adminForMe
       .from("profiles")
       .select("email")
       .eq("id", context.userId)

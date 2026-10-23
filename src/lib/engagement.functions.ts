@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { isBirthdayNear } from "@/lib/security-rules";
 
 // Moderação do Elogio Rápido: bloqueia o envio na hora (não deixa nem
 // registrar) quando a mensagem tem ofensa, discriminação, ameaça ou
@@ -63,7 +64,11 @@ async function checkLowEnergyEscalation(context: { supabase: any; userId: string
   if (!rows.every((r: any) => r.mood <= LOW_MOOD_THRESHOLD)) return;
 
   const streakStart = rows[rows.length - 1].created_at;
-  const { data: already } = await context.supabase
+  // Lê com service role: a RLS de low_energy_alerts só libera admin, então com
+  // o token do próprio usuário o dedupe nunca achava o alerta anterior e
+  // notificava a liderança de novo a cada check-in baixo.
+  const { supabaseAdmin: adminForDedupe } = await import("@/integrations/supabase/client.server");
+  const { data: already } = await adminForDedupe
     .from("low_energy_alerts")
     .select("id")
     .eq("user_id", context.userId)
@@ -145,7 +150,10 @@ export const submitMood = createServerFn({ method: "POST" })
       throw new Error("Você já fez seu check-in hoje. Até amanhã!");
     }
 
-    const { error } = await context.supabase
+    // Grava pelo servidor: o banco não aceita mais INSERT direto do browser
+    // (dava pra mandar created_at retroativo e ganhar pontos de dias passados).
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin
       .from("mood_checkins")
       .insert({ user_id: context.userId, mood: data.mood, note: data.note ?? null });
     if (error) throw new Error(error.message);
@@ -225,8 +233,8 @@ export const sendKudos = createServerFn({ method: "POST" })
     z
       .object({
         to_user: z.string().uuid(),
-        message: z.string().min(2).max(500),
-        category: z.string().optional(),
+        message: z.string().trim().min(2).max(500),
+        category: z.enum(["aniversario"]).optional(),
       })
       .parse(d),
   )
@@ -288,6 +296,18 @@ export const sendKudos = createServerFn({ method: "POST" })
         throw new Error(`Você já elogiou essa pessoa nos últimos ${KUDOS_SAME_PERSON_COOLDOWN_DAYS} dias — pode mandar de novo a partir de ${nextLabel}.`);
       }
     } else {
+      // Só vale como elogio de aniversário se a pessoa faz aniversário mesmo
+      // (semana do aniversário, como na tela de Aniversários). Antes qualquer
+      // um mandava category "aniversario" e escapava do limite diário.
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: target } = await supabaseAdmin
+        .from("profiles")
+        .select("birth_date")
+        .eq("id", data.to_user)
+        .maybeSingle();
+      if (!isBirthdayNear(target?.birth_date ?? null)) {
+        throw new Error("O elogio de aniversário só pode ser enviado na semana do aniversário da pessoa.");
+      }
       // Elogio de aniversário: livre da contagem diária, mas só 1 por
       // aniversariante (janela de ~300 dias — cobre "o ano do aniversário
       // atual" sem depender de virada de ano exata).
@@ -306,7 +326,10 @@ export const sendKudos = createServerFn({ method: "POST" })
       }
     }
 
-    const { error } = await context.supabase.from("kudos").insert({
+    // Grava pelo servidor: o INSERT direto do browser foi revogado no banco
+    // (pulava o limite diário, o cooldown e o filtro de termos).
+    const { supabaseAdmin: adminForInsert } = await import("@/integrations/supabase/client.server");
+    const { error } = await adminForInsert.from("kudos").insert({
       from_user: context.userId,
       to_user: data.to_user,
       message: data.message,

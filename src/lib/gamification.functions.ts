@@ -227,6 +227,17 @@ export const markScheduleCompleted = createServerFn({ method: "POST" })
       ),
     );
     if (!checks.some((c: any) => c.data)) throw new Error("Forbidden");
+    const isAdmin = !!checks[0]?.data;
+    // Ninguém (fora admin) marca a própria semana como cumprida: dava +20 pts
+    // pra si mesmo. E só vale pra quem está no seu escopo (time/casa).
+    if (!isAdmin && data.user_id === context.userId) throw new Error("Forbidden");
+    if (!isAdmin) {
+      const { data: inScope } = await context.supabase.rpc("can_view_user_data", {
+        _target_user_id: data.user_id,
+        _viewer_id: context.userId,
+      });
+      if (!inScope) throw new Error("Forbidden");
+    }
 
     const { data: existing } = await context.supabase
       .from("weekly_schedules")

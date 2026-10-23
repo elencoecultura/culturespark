@@ -18,7 +18,10 @@ export const generateEvaluationPdf = createServerFn({ method: "POST" })
       .single();
     if (error) throw new Error(error.message);
 
-    const { data: profile } = await context.supabase
+    // A avaliação acima já passou pela RLS (quem chama pode vê-la); o e-mail
+    // do avaliado vem pelo service role porque o browser não lê mais e-mail.
+    const { supabaseAdmin: adminForProfile } = await import("@/integrations/supabase/client.server");
+    const { data: profile } = await adminForProfile
       .from("profiles")
       .select("full_name,attraction,role_title,email")
       .eq("id", ev.evaluatee_id)

@@ -39,7 +39,8 @@ export const listCastWithHierarchy = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await requireAdmin(context.supabase, context.userId);
-    const { data: profiles, error } = await context.supabase
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: profiles, error } = await supabaseAdmin
       .from("profiles")
       .select("id,full_name,role_title,negocio,setor,attraction,active,manager_id,co_leader_id,email")
       .order("full_name");
@@ -121,6 +122,10 @@ export const updateProfileHierarchy = createServerFn({ method: "POST" })
       .update(patch)
       .eq("id", data.profile_id);
     if (error) throw new Error(error.message);
+    if (data.active !== undefined) {
+      const { syncAccountBan } = await import("@/lib/account-ban.server");
+      await syncAccountBan(data.profile_id, data.active);
+    }
     return { ok: true };
   });
 

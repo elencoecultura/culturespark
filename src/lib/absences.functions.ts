@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { addDaysToKey, todayKey } from "@/lib/date-buckets";
+import { isOwnAttachmentPath } from "@/lib/security-rules";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida");
 
@@ -17,6 +18,12 @@ export const registerAbsence = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    // O anexo tem de estar na pasta do próprio usuário: a liderança abre esse
+    // arquivo por URL assinada com service role, então um caminho apontando
+    // pra pasta de outra pessoa expunha o atestado dela.
+    if (data.attachment_path && !isOwnAttachmentPath(data.attachment_path, context.userId)) {
+      throw new Error("Anexo inválido");
+    }
     const { error } = await context.supabase
       .from("journey_absences")
       .upsert(
@@ -208,9 +215,11 @@ export const listTodayCheckins = createServerFn({ method: "POST" })
       (absences ?? []).map((a) => [a.user_id as string, a]),
     );
 
+    // Só assina anexo que está na pasta do próprio ausente (registros antigos
+    // com caminho de outra pessoa ficam sem link).
     const absencePaths = (absences ?? [])
-      .map((a) => a.attachment_path)
-      .filter((p): p is string => !!p);
+      .filter((a) => !!a.attachment_path && isOwnAttachmentPath(a.attachment_path as string, a.user_id as string))
+      .map((a) => a.attachment_path as string);
     const signed = new Map<string, string>();
     if (absencePaths.length) {
       const { data: urls } = await supabaseAdmin.storage

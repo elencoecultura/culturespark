@@ -2,15 +2,10 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeader } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { pickClientIp } from "@/lib/security-rules";
 
 function clientIp(): string {
-  const fromCf = getRequestHeader("cf-connecting-ip");
-  if (fromCf) return fromCf.trim();
-  const xff = getRequestHeader("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim();
-  const real = getRequestHeader("x-real-ip");
-  if (real) return real.trim();
-  return "";
+  return pickClientIp((name) => getRequestHeader(name));
 }
 
 const ipSchema = z

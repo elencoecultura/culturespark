@@ -39,6 +39,8 @@ const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 // janela personalizada (de/até, qualquer intervalo no passado). Janelas com
 // mais de 62 dias (ou o preset "ano") agrupam o gráfico por mês em vez de
 // por dia, senão vira uma parede de barrinhas ilegível.
+const MAX_RANGE_DAYS = 400;
+
 export function resolveDateBuckets(input: DateRangeInput) {
   const today = todayKey();
   let startKey: string;
@@ -48,6 +50,10 @@ export function resolveDateBuckets(input: DateRangeInput) {
     startKey = input.from <= input.to ? input.from : input.to;
     endKey = input.from <= input.to ? input.to : input.from;
     if (endKey > today) endKey = today; // não busca o futuro
+    // Teto de ~13 meses: o laço abaixo cria um item por dia, e um "from" no
+    // ano 0100 travava a função (CPU/memória) para qualquer usuário logado.
+    const minStart = addDaysToKey(endKey, -MAX_RANGE_DAYS);
+    if (startKey < minStart) startKey = minStart;
   } else {
     startKey = periodStartKey(input.period ?? "mes", today);
     endKey = today;

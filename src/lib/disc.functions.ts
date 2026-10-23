@@ -10,7 +10,8 @@ const COOLDOWN_DAYS = 365; // 1x por ano
 export const getDiscStatus = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const prof = await context.supabase
+    const { supabaseAdmin: adminForProfile } = await import("@/integrations/supabase/client.server");
+    const prof = await adminForProfile
       .from("profiles")
       .select("first_login_at, created_at")
       .eq("id", context.userId)
