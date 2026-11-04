@@ -30,7 +30,7 @@ const BLOCKED_TERMS = [
 
 const stripAccents = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 
-function findBlockedTerm(text: string): string | null {
+export function findBlockedTerm(text: string): string | null {
   const normalized = stripAccents(text).toLowerCase();
   for (const term of BLOCKED_TERMS) {
     const normTerm = stripAccents(term).toLowerCase();

@@ -9,6 +9,7 @@ export const POINT_RULES = [
   { kind: "kudos_received", label: "Elogio recebido", points: 5, hint: "" },
   { kind: "journey_step", label: "Passo da jornada", points: 10, hint: "" },
   { kind: "schedule_completed", label: "Semana cumprida", points: 20, hint: "marcada pelo líder" },
+  { kind: "celebracao_magia", label: "Celebração da Magia", points: 3, hint: "felicitar tempo de casa" },
 ] as const;
 
 export const BADGES = [

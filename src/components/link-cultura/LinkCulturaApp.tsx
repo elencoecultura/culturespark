@@ -46,6 +46,13 @@ import { confirmAction } from "@/lib/confirm";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { submitMood, saveMoodReflection, listMyMoods, sendKudos, listKudos, toggleKudosLike, listColleagues, leaderOverview } from "@/lib/engagement.functions";
 import { listWeekBirthdays } from "@/lib/birthdays.functions";
+import {
+  listWeekCompanyAnniversaries,
+  sendCompanyAnniversaryWish,
+  listMyAnniversaryWishes,
+  listAllAnniversaryWishes,
+  deleteAnniversaryWish,
+} from "@/lib/celebration.functions";
 import { getDiscStatus } from "@/lib/disc.functions";
 import Bussola, { BussolaAdmin } from "./Bussola";
 import WellbeingAdmin from "./WellbeingAdmin";
@@ -1814,6 +1821,186 @@ function BirthdaysScreen({ myUserId }: { myUserId: string }) {
   );
 }
 
+/* ---------- Celebração da Magia (aniversário de empresa) ---------- */
+
+const anosDeMagia = (n: number) => `${n} ${n === 1 ? "ano" : "anos"} de magia`;
+
+function CelebracaoScreen({ myUserId, isAdmin }: { myUserId: string; isAdmin: boolean }) {
+  const qc = useQueryClient();
+  const listFn = useServerFn(listWeekCompanyAnniversaries);
+  const sendFn = useServerFn(sendCompanyAnniversaryWish);
+  const mineFn = useServerFn(listMyAnniversaryWishes);
+  const { data } = useQuery({ queryKey: ["celebracao", "week"], queryFn: () => listFn() });
+  const { data: mine } = useQuery({ queryKey: ["celebracao", "mine"], queryFn: () => mineFn() });
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const send = useMutation({
+    mutationFn: (v: { to: string; message: string }) => sendFn({ data: { to_user: v.to, message: v.message } }),
+    onSuccess: (_r, v) => {
+      toast.success("Felicitação enviada", { description: "+3 pontos na Celebração da Magia." });
+      setDrafts((d) => ({ ...d, [v.to]: "" }));
+      setOpenId(null);
+      qc.invalidateQueries({ queryKey: ["celebracao"] });
+      qc.invalidateQueries({ queryKey: ["gamification"] });
+    },
+    onError: (e: any) => toast.error("Não rolou", { description: e.message }),
+  });
+
+  const rows = data?.rows ?? [];
+  const today = rows.filter((r) => r.is_today);
+  const rest = rows.filter((r) => !r.is_today);
+
+  const renderCard = (r: (typeof rows)[number]) => {
+    const me = r.id === myUserId;
+    const open = openId === r.id;
+    const draft = drafts[r.id] ?? "";
+    return (
+      <GlassCard key={r.id} variant={r.is_today ? "brand" : "glass"}>
+        <div className="flex items-center gap-3">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white/20 font-display text-[16px] font-black">
+            {initials(r.full_name)}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-display text-[16px] font-black tracking-[-0.02em]">{r.full_name}</div>
+            <div className="truncate text-[11.5px] text-white/70">
+              {[r.attraction, r.role_title].filter(Boolean).join(" · ")}
+            </div>
+            <div className="mt-0.5 text-[12px] font-semibold">
+              {anosDeMagia(r.years)} · {r.is_today ? "é hoje" : r.weekday}
+              {r.received_count > 0 ? ` · ${r.received_count} ${r.received_count === 1 ? "felicitação" : "felicitações"}` : ""}
+            </div>
+          </div>
+          {me ? (
+            <span className="glass-chip inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold">
+              <Sparkles size={13} /> é você
+            </span>
+          ) : r.sent_by_me ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/20 px-3 py-1.5 text-[11px] font-semibold">
+              <Check size={13} /> Enviada
+            </span>
+          ) : (
+            <button
+              onClick={() => setOpenId(open ? null : r.id)}
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-bold transition active:scale-95",
+                r.is_today ? "bg-white text-blu" : "bg-brand-grad text-white shadow-glow",
+              )}
+            >
+              <PartyPopper size={14} /> Felicitar
+            </button>
+          )}
+        </div>
+        {open && !me && !r.sent_by_me && (
+          <div className="mt-3 grid gap-2">
+            <textarea
+              value={draft}
+              onChange={(e) => setDrafts((d) => ({ ...d, [r.id]: e.target.value.slice(0, 280) }))}
+              placeholder={`Uma mensagem curta pelos ${anosDeMagia(r.years)}`}
+              rows={3}
+              className="glass-input w-full resize-none rounded-2xl px-4 py-3 text-[13.5px] text-white outline-none placeholder:text-white/45"
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-white/55">{draft.trim().length}/280</span>
+              <button
+                onClick={() => send.mutate({ to: r.id, message: draft.trim() })}
+                disabled={send.isPending || draft.trim().length < 2}
+                className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-[12px] font-bold text-blu transition active:scale-95 disabled:opacity-50"
+              >
+                <Send size={13} /> Enviar
+              </button>
+            </div>
+          </div>
+        )}
+      </GlassCard>
+    );
+  };
+
+  return (
+    <>
+      <TopBar eyebrow="Celebração da Magia" title="Tempo de casa" subtitle="Quem completa anos de magia nesta semana." />
+
+      {rows.length === 0 && (
+        <div className="mt-6">
+          <Notice>Ninguém completa aniversário de empresa nesta semana. Volte semana que vem!</Notice>
+        </div>
+      )}
+      {today.length > 0 && (
+        <div className="mt-6 grid gap-3">
+          <SectionTitle>É hoje</SectionTitle>
+          {today.map(renderCard)}
+        </div>
+      )}
+      {rest.length > 0 && (
+        <div className="mt-6 grid gap-3">
+          <SectionTitle>No restante da semana</SectionTitle>
+          {rest.map(renderCard)}
+        </div>
+      )}
+
+      {(mine ?? []).length > 0 && (
+        <div className="mt-8 grid gap-3">
+          <SectionTitle>Felicitações que você recebeu</SectionTitle>
+          {(mine ?? []).map((w) => (
+            <GlassCard key={w.id}>
+              <div className="text-[13.5px] leading-snug">{w.message}</div>
+              <div className="mt-1.5 text-[11.5px] text-white/60">
+                {w.from_name} · {anosDeMagia(w.years)} · {new Date(w.created_at).toLocaleDateString("pt-BR")}
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      )}
+
+      {isAdmin && <CelebracaoModeracao />}
+    </>
+  );
+}
+
+function CelebracaoModeracao() {
+  const qc = useQueryClient();
+  const listFn = useServerFn(listAllAnniversaryWishes);
+  const delFn = useServerFn(deleteAnniversaryWish);
+  const { data } = useQuery({ queryKey: ["celebracao", "all"], queryFn: () => listFn() });
+  const del = useMutation({
+    mutationFn: (id: string) => delFn({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Mensagem removida", { description: "Os 3 pontos dela também saíram." });
+      qc.invalidateQueries({ queryKey: ["celebracao"] });
+    },
+    onError: (e: any) => toast.error("Não rolou", { description: e.message }),
+  });
+  return (
+    <div className="mt-8 grid gap-3">
+      <SectionTitle>Moderação (admin)</SectionTitle>
+      {(data ?? []).length === 0 && <Notice>Nenhuma felicitação enviada ainda.</Notice>}
+      {(data ?? []).map((w) => (
+        <GlassCard key={w.id}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[13.5px] leading-snug">{w.message}</div>
+              <div className="mt-1.5 text-[11.5px] text-white/60">
+                {w.from_name} → {w.to_name} · {anosDeMagia(w.years)} · {new Date(w.created_at).toLocaleDateString("pt-BR")}
+              </div>
+            </div>
+            <button
+              onClick={() =>
+                confirmAction("Remover esta felicitação? Os 3 pontos de quem enviou também saem.", () => del.mutate(w.id), {
+                  confirmLabel: "Remover",
+                })
+              }
+              className="glass-chip grid h-9 w-9 shrink-0 place-items-center rounded-full"
+              aria-label="Remover"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        </GlassCard>
+      ))}
+    </div>
+  );
+}
+
 function GamificationScreen({ myUserId }: { myUserId: string }) {
   const { business, canSelect } = useBusiness();
   const myFn = useServerFn(getMyGamification);
@@ -1962,7 +2149,7 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
 
 /* ---------- Shell ---------- */
 
-type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "kudos-audit" | "iluminari-admin" | "checkins-dashboard" | "culture-overview" | "install-guide" | "accounts-admin" | "nps-results" | "wellbeing-timeline" | "pesquisas";
+type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "kudos-audit" | "iluminari-admin" | "checkins-dashboard" | "culture-overview" | "install-guide" | "accounts-admin" | "nps-results" | "wellbeing-timeline" | "pesquisas" | "celebracao";
 
 function BottomNav({
   active,
@@ -2065,6 +2252,7 @@ export default function LinkCulturaApp() {
       items: [
         { id: "bussola", label: "Bússola das Essências", icon: Compass, desc: "Mapeamento comportamental (1x/ano)" },
         { id: "birthdays", label: "Aniversários", icon: Cake, desc: "Quem faz aniversário na semana" },
+        { id: "celebracao", label: "Celebração da Magia", icon: Sparkles, desc: "Quem completa anos de casa na semana" },
         { id: "iluminari", label: "Iluminari", icon: Sun, desc: "Compartilhar um momento" },
         { id: "feedback", label: "Elogio Rápido", icon: MessageCircle, desc: "Envie e veja reconhecimentos" },
         { id: "install-guide", label: "Instalar o app", icon: Download, desc: "Passo a passo pra iPhone e Android" },
@@ -2142,6 +2330,7 @@ export default function LinkCulturaApp() {
       case "points": return <GamificationScreen myUserId={profile?.id ?? ""} />;
       case "iluminari": return <IluminariScreen myUserId={profile?.id ?? ""} isAdmin={isAdmin} />;
       case "birthdays": return <BirthdaysScreen myUserId={profile?.id ?? ""} />;
+      case "celebracao": return <CelebracaoScreen myUserId={profile?.id ?? ""} isAdmin={isAdmin} />;
       case "bussola": return <Bussola name={name} />;
       case "disc-admin": return <BussolaAdmin />;
       case "wellbeing": return <WellbeingAdmin />;

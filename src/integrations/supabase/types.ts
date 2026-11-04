@@ -14,6 +14,12 @@ export type Database = {
   }
   public: {
     Tables: {
+      company_anniversary_wishes: {
+        Row: { anniversary_year: number; created_at: string; from_user: string; id: string; message: string; to_user: string; years: number }
+        Insert: { anniversary_year: number; created_at?: string; from_user: string; id?: string; message: string; to_user: string; years: number }
+        Update: { anniversary_year?: number; created_at?: string; from_user?: string; id?: string; message?: string; to_user?: string; years?: number }
+        Relationships: []
+      }
       leader_access: {
         Row: { created_at: string; created_by: string | null; leader_id: string; member_id: string; motivo: string | null; source: string }
         Insert: { created_at?: string; created_by?: string | null; leader_id: string; member_id: string; motivo?: string | null; source?: string }

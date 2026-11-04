@@ -9,6 +9,7 @@ const POINT_LABELS: Record<string, string> = {
   kudos_received: "Elogio recebido",
   journey_step: "Passo da jornada",
   schedule_completed: "Semana cumprida",
+  celebracao_magia: "Celebração da Magia",
 };
 
 

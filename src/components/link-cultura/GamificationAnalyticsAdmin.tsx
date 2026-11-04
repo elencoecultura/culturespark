@@ -38,6 +38,7 @@ const KINDS = [
   { key: "kudos_received", label: "Elogio recebido" },
   { key: "journey_step", label: "Passo da jornada" },
   { key: "schedule_completed", label: "Semana cumprida" },
+  { key: "celebracao_magia", label: "Celebração da Magia" },
 ];
 
 type GroupBy = "negocio" | "kind" | "role" | "user";
