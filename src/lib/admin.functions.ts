@@ -20,36 +20,27 @@ async function myLeadershipTier(supabase: any, userId: string) {
   return { isAdmin, isLeaderTier: isLider, isGerente, isDirecao };
 }
 
-// Time de gente (Elenco) — escopado igual ao painel de check-ins:
-// líder só vê quem tem manager_id OU co_leader_id apontando pra ele, gerente/
-// direção veem a atração/negócio inteiro, admin e attraction/negocio="TODOS"
-// veem tudo.
+// Time de gente (Liderados) — escopado pela regra única (scope.server.ts):
+// líder da planilha vê exatamente a lista dele; Trupe/Hector Studios seguem
+// hierarquia/casa; admin vê tudo.
 export const listUsers = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const tier = await myLeadershipTier(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: myProfile } = await supabaseAdmin
-      .from("profiles")
-      .select("attraction, negocio")
-      .eq("id", context.userId)
-      .maybeSingle();
-    const hasTodosScope = myProfile?.attraction === "TODOS" || myProfile?.negocio === "TODOS";
-    const seesAll = tier.isAdmin || hasTodosScope;
-    const seesWholeAttraction = seesAll || tier.isGerente || tier.isDirecao;
+    // Escopo pela regra única (planilha de acessos / hierarquia / admin).
+    const { visibleUserIds } = await import("@/lib/scope.server");
+    const visible = await visibleUserIds(context.userId);
+    if (tier.isAdmin) visible.add(context.userId);
 
     // Colunas explícitas: a tela de Elenco não usa cpf, wifi_bypass nem
     // first_login_at, e antes ia tudo (select *) pra qualquer liderança.
-    let q = supabaseAdmin
+    const q = supabaseAdmin
       .from("profiles")
-      .select("id, full_name, attraction, negocio, setor, role_title, hero_id, active, weekly_hours, days_off, manager_id, co_leader_id, area, department, birth_date, created_at, updated_at")
+      .select("id, full_name, attraction, negocio, setor, role_title, hero_id, active, weekly_hours, days_off, manager_id, co_leader_id, area, department, birth_date, admission_date, situacao, created_at, updated_at")
+      .in("id", visible.size ? Array.from(visible) : ["00000000-0000-0000-0000-000000000000"])
       .order("full_name");
-    if (!seesAll) {
-      q = seesWholeAttraction
-        ? q.eq("attraction", myProfile?.attraction ?? "__none__")
-        : q.or(`manager_id.eq.${context.userId},co_leader_id.eq.${context.userId}`);
-    }
     const { data: profiles, error } = await q;
     if (error) throw new Error(error.message);
 
@@ -59,8 +50,10 @@ export const listUsers = createServerFn({ method: "GET" })
       : { data: [] as { user_id: string; role: string }[] };
     const { data: usersList } = await supabaseAdmin.auth.admin.listUsers({ perPage: 500 });
     const emailById = new Map(usersList.users.map((u) => [u.id, u.email ?? ""]));
+    // Situação (licença etc.) só aparece para admin.
     return (profiles ?? []).map((p) => ({
       ...p,
+      situacao: tier.isAdmin ? p.situacao : null,
       email: emailById.get(p.id) ?? "",
       roles: (roles ?? []).filter((r) => r.user_id === p.id).map((r) => r.role as string),
     }));

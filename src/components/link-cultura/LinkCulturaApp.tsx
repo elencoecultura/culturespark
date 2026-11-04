@@ -1042,6 +1042,10 @@ function TeamScreen({ isAdmin }: { isAdmin: boolean }) {
                   <span key={r} className="rounded-full bg-white/15 px-2 py-0.5 text-[10.5px] uppercase tracking-[0.12em]">{r}</span>
                 ))}
                 {!p.active && <span className="rounded-full bg-pink/30 px-2 py-0.5 text-[10.5px] uppercase tracking-[0.12em]">inativo</span>}
+                {/* Situação (licença etc.) só chega preenchida para admin */}
+                {p.situacao && p.situacao !== "Ativo" && (
+                  <span className="rounded-full bg-amber-400/25 px-2 py-0.5 text-[10.5px] uppercase tracking-[0.12em]">{p.situacao}</span>
+                )}
               </div>
             </div>
             <div className="mt-2 flex flex-wrap gap-2 text-[12px] text-white/70">
@@ -2043,7 +2047,7 @@ export default function LinkCulturaApp() {
     ];
     if (isLeader) {
       t.push({ id: "evals", label: "Avaliações", icon: Star });
-      t.push({ id: "leader", label: "Líder", icon: AlertTriangle });
+      t.push({ id: "leader", label: "Liderança", icon: AlertTriangle });
     } else {
       t.push({ id: "points", label: "Pontos", icon: Trophy });
     }
@@ -2085,7 +2089,7 @@ export default function LinkCulturaApp() {
       // Bússola: líder vê o resultado completo de quem lidera direto,
       // gerente/direção da casa inteira, admin de todo mundo.
       gestao.push({ id: "disc-admin", label: "Bússola do time", icon: Compass, desc: "Perfis comportamentais do seu time" });
-      if (!isAdmin) gestao.push({ id: "team", label: "Elenco", icon: Users, desc: "Gerenciar pessoas" });
+      if (!isAdmin) gestao.push({ id: "team", label: "Liderados", icon: Users, desc: "As pessoas que você acompanha" });
       groups.push({ title: "Gestão", items: gestao });
     }
 

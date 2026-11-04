@@ -9,7 +9,7 @@ export { isPrivilegedPerfil } from "@/lib/security-rules";
 export async function applyPreRegistration(userId: string, preId: string) {
   const { data: pre, error } = await supabaseAdmin
     .from("pre_registrations")
-    .select("id, cargo, setor, perfil, negocio, claimed_by")
+    .select("id, cargo, setor, perfil, negocio, claimed_by, whatsapp, admission_date, birth_date, employee_code, situacao")
     .eq("id", preId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -29,6 +29,12 @@ export async function applyPreRegistration(userId: string, preId: string) {
       negocio: pre.negocio,
       setor: pre.setor,
       role_title: pre.cargo,
+      // Dados da planilha oficial, quando o pré-cadastro veio dela
+      ...(pre.whatsapp ? { whatsapp: pre.whatsapp } : {}),
+      ...(pre.admission_date ? { admission_date: pre.admission_date } : {}),
+      ...(pre.birth_date ? { birth_date: pre.birth_date } : {}),
+      ...(pre.employee_code ? { employee_code: pre.employee_code } : {}),
+      ...(pre.situacao ? { situacao: pre.situacao } : {}),
     })
     .eq("id", userId);
   if (pErr) throw new Error(pErr.message);
@@ -42,4 +48,17 @@ export async function applyPreRegistration(userId: string, preId: string) {
     .update({ claimed_by: userId, claimed_at: new Date().toISOString() })
     .eq("id", pre.id);
   if (cErr) throw new Error(cErr.message);
+
+  // Acessos de líder que esperavam a conta existir (planilha de acessos).
+  const { data: pending } = await supabaseAdmin
+    .from("leader_access_pending")
+    .select("leader_id, motivo")
+    .eq("pre_registration_id", pre.id);
+  if (pending?.length) {
+    const { error: aErr } = await supabaseAdmin
+      .from("leader_access")
+      .upsert(pending.map((x) => ({ leader_id: x.leader_id, member_id: userId, motivo: x.motivo, source: "planilha" })));
+    if (aErr) throw new Error(aErr.message);
+    await supabaseAdmin.from("leader_access_pending").delete().eq("pre_registration_id", pre.id);
+  }
 }

@@ -36,3 +36,6 @@ dist-ssr
 *.sln
 *.sw?
 supabase/.temp/
+
+# backups locais com dados pessoais (nunca commitar)
+backups/

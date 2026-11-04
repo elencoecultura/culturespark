@@ -68,26 +68,14 @@ async function resolveScope(context: {
 }
 
 /**
- * Returns the set of user_ids the caller is allowed to see in analytics.
- * - Admin/Direção: everyone
- * - Gerente: same `negocio` (a atração/casa inteira)
- * - Líder: só quem tem manager_id OU co_leader_id apontando pro próprio
- *   líder (o time direto dele — várias lideranças podem dividir a mesma
- *   atração, então nunca escopa líder por atração, só por manager_id/
- *   co_leader_id, igual ao painel de check-ins).
- * Returns null when there is no restriction.
+ * user_ids que a pessoa pode ver no analytics, pela regra única
+ * (scope.server.ts): admin vê todos (null = sem restrição); os demais, a
+ * lista da planilha ou a hierarquia/casa.
  */
-function allowedIdsFor(
-  scope: RolesCtx,
-  profiles: ProfileRow[],
-): Set<string> | null {
-  if (scope.isAdmin || scope.isDirecao) return null;
-  const ids = new Set<string>();
-  for (const p of profiles) {
-    if (scope.isGerente && scope.negocio && p.negocio === scope.negocio) ids.add(p.id);
-    else if (scope.isLider && (p.manager_id === scope.userId || p.co_leader_id === scope.userId)) ids.add(p.id);
-  }
-  return ids;
+async function allowedIdsFor(scope: RolesCtx): Promise<Set<string> | null> {
+  if (scope.isAdmin) return null;
+  const { visibleUserIds } = await import("@/lib/scope.server");
+  return visibleUserIds(scope.userId);
 }
 
 async function assertAdmin(context: { supabase: { rpc: (n: string, p: Record<string, unknown>) => unknown }; userId: string }) {
@@ -217,7 +205,7 @@ export const getGamificationAnalytics = createServerFn({ method: "POST" })
     const profById = new Map<string, ProfileRow>(
       (profiles ?? []).map((p) => [p.id as string, p as ProfileRow]),
     );
-    const allowed = allowedIdsFor(scope, (profiles ?? []) as ProfileRow[]);
+    const allowed = await allowedIdsFor(scope);
 
     const { data: rolesRows } = await context.supabase
       .from("user_roles")
@@ -399,7 +387,7 @@ export const listAnalyticsMembers = createServerFn({ method: "GET" })
       .eq("active", true)
       .order("full_name", { ascending: true });
     if (error) throw new Error(error.message);
-    const allowed = allowedIdsFor(scope, (profiles ?? []) as unknown as ProfileRow[]);
+    const allowed = await allowedIdsFor(scope);
     const rows = (profiles ?? [])
       .filter((p) => !allowed || allowed.has(p.id as string))
       .map((p) => ({

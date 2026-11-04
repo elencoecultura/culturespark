@@ -48,11 +48,10 @@ function matchesEntry(clientIp: string, entry: string): boolean {
  * Called right after login. Returns whether the user is allowed to use the app
  * from the current network. Marks first_login_at on the very first successful access.
  *
- * Rules:
- *  - admin: sempre passa (precisa poder mexer no app de qualquer lugar)
- *  - liderança comum (líder/gerente/direção) NÃO tem bypass automático —
- *    só quem foi explicitamente liberado no painel (wifi_bypass) escapa da
- *    trava de rede, mesmo sendo líder.
+ * Rules (04/11/2026):
+ *  - admin, direção, gerente e líder: passam de qualquer rede
+ *  - Trupe (attraction TRUPE): passa de qualquer rede
+ *  - liberação manual no painel (wifi_bypass): passa
  *  - first access (first_login_at is null): allowed AND timestamped
  *  - subsequent access: allowed only if client IP is in wifi_allowlist
  *  - empty allowlist: allowed (lock not configured yet — graceful default)
@@ -63,13 +62,20 @@ export const enforceWifiLock = createServerFn({ method: "POST" })
     const ip = clientIp();
     const { supabase, userId } = context;
 
-    const { data: isAdmin } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
+    // Acesso de qualquer rede (decisão de 04/11/2026): líderes, gestores,
+    // diretores, admins e toda a Trupe. Os demais seguem a trava de rede.
+    const FREE_ROLES = ["admin", "direcao", "gerente", "lider"] as const;
+    const roleChecks = await Promise.all(
+      FREE_ROLES.map((role) => supabase.rpc("has_role", { _user_id: userId, _role: role })),
+    );
+    const isAdmin = !!roleChecks[0]?.data;
+    const hasFreeRole = roleChecks.some((r: any) => r.data);
 
     // profile flag + per-user bypass (sensitive columns: read with admin client)
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: prof } = await supabaseAdmin
       .from("profiles")
-      .select("first_login_at, wifi_bypass")
+      .select("first_login_at, wifi_bypass, attraction")
       .eq("id", userId)
       .maybeSingle();
 
@@ -84,6 +90,12 @@ export const enforceWifiLock = createServerFn({ method: "POST" })
 
     if (isAdmin) {
       return { allowed: true as const, reason: "admin", ip, firstAccess };
+    }
+    if (hasFreeRole) {
+      return { allowed: true as const, reason: "leadership", ip, firstAccess };
+    }
+    if ((prof?.attraction ?? "").toUpperCase() === "TRUPE") {
+      return { allowed: true as const, reason: "trupe", ip, firstAccess };
     }
     if (prof?.wifi_bypass) {
       return { allowed: true as const, reason: "bypass", ip, firstAccess };

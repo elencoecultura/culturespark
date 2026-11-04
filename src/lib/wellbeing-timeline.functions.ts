@@ -90,13 +90,14 @@ export const getWellbeingTimeline = createServerFn({ method: "GET" })
       .eq("active", true)
       .not("attraction", "is", null)
       .neq("attraction", "TODOS");
+    // Escopo pela regra única (planilha de acessos / hierarquia / admin);
+    // "meu time" ainda restringe a quem a pessoa lidera direto.
+    const { visibleUserIds } = await import("@/lib/scope.server");
+    const visible = seesAll ? null : await visibleUserIds(context.userId);
+    const inScope = (profiles ?? []).filter((p) => !visible || visible.has(p.id as string));
     const scoped = data.mineOnly
-      ? (profiles ?? []).filter((p) => p.manager_id === context.userId || p.co_leader_id === context.userId)
-      : seesAll
-        ? (profiles ?? [])
-        : isLiderOnly
-          ? (profiles ?? []).filter((p) => p.manager_id === context.userId || p.co_leader_id === context.userId)
-          : (profiles ?? []).filter((p) => p.attraction === me?.attraction);
+      ? inScope.filter((p) => p.manager_id === context.userId || p.co_leader_id === context.userId)
+      : inScope;
     if (isLiderOnly && scoped.length === 0) return { buckets: bucketKeys, series: [] };
     // grupo: casa a casa (visão geral), setor a setor (uma casa só) ou
     // pessoa a pessoa (líder comum ou "meu time" pedido explicitamente,

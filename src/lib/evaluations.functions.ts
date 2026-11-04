@@ -167,7 +167,14 @@ export const listEvaluableMembers = createServerFn({ method: "GET" })
     }
     const { data, error } = await q;
     if (error) throw new Error(error.message);
-    return (data ?? []).filter((p: any) => p.id !== context.userId);
+    // Avaliar = liderado direto/co-liderado E dentro do que o líder pode ver
+    // (planilha de acessos). Ex.: co-líder que a planilha tirou não avalia.
+    let visible: Set<string> | null = null;
+    if (!admin) {
+      const { visibleUserIds } = await import("@/lib/scope.server");
+      visible = await visibleUserIds(context.userId);
+    }
+    return (data ?? []).filter((p: any) => p.id !== context.userId && (!visible || visible.has(p.id)));
   });
 
 // Cria (ou reaproveita) avaliação para o membro escolhido no ciclo indicado, vinculando o usuário atual como avaliador.
@@ -194,6 +201,10 @@ export const createEvaluationForMember = createServerFn({ method: "POST" })
         (target.manager_id !== context.userId && target.co_leader_id !== context.userId)
       ) {
         throw new Error("Você não é líder desse membro.");
+      }
+      const { visibleUserIds } = await import("@/lib/scope.server");
+      if (!(await visibleUserIds(context.userId)).has(data.evaluatee_id)) {
+        throw new Error("Você não tem acesso a esse membro.");
       }
     }
 

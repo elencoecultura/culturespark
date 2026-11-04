@@ -14,6 +14,18 @@ export type Database = {
   }
   public: {
     Tables: {
+      leader_access: {
+        Row: { created_at: string; created_by: string | null; leader_id: string; member_id: string; motivo: string | null; source: string }
+        Insert: { created_at?: string; created_by?: string | null; leader_id: string; member_id: string; motivo?: string | null; source?: string }
+        Update: { created_at?: string; created_by?: string | null; leader_id?: string; member_id?: string; motivo?: string | null; source?: string }
+        Relationships: []
+      }
+      leader_access_pending: {
+        Row: { created_at: string; leader_id: string; motivo: string | null; pre_registration_id: string }
+        Insert: { created_at?: string; leader_id: string; motivo?: string | null; pre_registration_id: string }
+        Update: { created_at?: string; leader_id?: string; motivo?: string | null; pre_registration_id?: string }
+        Relationships: []
+      }
       app_settings: {
         Row: {
           key: string
@@ -1007,6 +1019,12 @@ export type Database = {
       }
       pre_registrations: {
         Row: {
+          admission_date: string | null
+          birth_date: string | null
+          employee_code: string | null
+          lider_direto: string | null
+          situacao: string | null
+          whatsapp: string | null
           cargo: string | null
           claimed_at: string | null
           claimed_by: string | null
@@ -1021,6 +1039,12 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          admission_date?: string | null
+          birth_date?: string | null
+          employee_code?: string | null
+          lider_direto?: string | null
+          situacao?: string | null
+          whatsapp?: string | null
           cargo?: string | null
           claimed_at?: string | null
           claimed_by?: string | null
@@ -1035,6 +1059,12 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          admission_date?: string | null
+          birth_date?: string | null
+          employee_code?: string | null
+          lider_direto?: string | null
+          situacao?: string | null
+          whatsapp?: string | null
           cargo?: string | null
           claimed_at?: string | null
           claimed_by?: string | null
@@ -1085,6 +1115,10 @@ export type Database = {
       }
       profiles: {
         Row: {
+          admission_date: string | null
+          employee_code: string | null
+          situacao: string | null
+          whatsapp: string | null
           active: boolean
           area: string | null
           attraction: string | null
@@ -1108,6 +1142,10 @@ export type Database = {
           wifi_bypass: boolean
         }
         Insert: {
+          admission_date?: string | null
+          employee_code?: string | null
+          situacao?: string | null
+          whatsapp?: string | null
           active?: boolean
           area?: string | null
           attraction?: string | null
@@ -1131,6 +1169,10 @@ export type Database = {
           wifi_bypass?: boolean
         }
         Update: {
+          admission_date?: string | null
+          employee_code?: string | null
+          situacao?: string | null
+          whatsapp?: string | null
           active?: boolean
           area?: string | null
           attraction?: string | null
@@ -1244,6 +1286,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      visible_user_ids: {
+        Args: { _viewer_id: string }
+        Returns: string[]
+      }
       award_points: {
         Args: {
           _kind: string

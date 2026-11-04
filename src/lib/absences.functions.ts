@@ -140,41 +140,26 @@ export const listTodayCheckins = createServerFn({ method: "POST" })
     );
     const hasLeadershipRole = roleChecks.some((r) => r.data);
     if (!hasLeadershipRole) throw new Error("Forbidden");
-    const [isAdmin, , , isGerente, isDirecao] = roleChecks.map((r) => r.data);
+    const [isAdmin] = roleChecks.map((r) => r.data);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: myProfile } = await supabaseAdmin
-      .from("profiles")
-      .select("attraction, negocio")
-      .eq("id", context.userId)
-      .maybeSingle();
-    // "TODOS" é o valor especial de quem enxerga tudo (ex.: gerente de todos
-    // os restaurantes).
-    const hasTodosScope = myProfile?.attraction === "TODOS" || myProfile?.negocio === "TODOS";
-    const seesAll = isAdmin || hasTodosScope;
-    // Gerente/direção enxergam a atração inteira (todos os times dela).
-    // Líder enxerga só o próprio time — várias lideranças podem dividir a
-    // mesma atração (ex.: 3 líderes de salão na mesma pizzaria), então
-    // escopo de líder é sempre por manager_id/co_leader_id, nunca por atração.
-    const seesWholeAttraction = seesAll || isGerente || isDirecao;
+    // Escopo pela regra única (planilha de acessos / hierarquia / admin).
+    const { visibleUserIds } = await import("@/lib/scope.server");
+    const visible = Array.from(await visibleUserIds(context.userId));
+    if (!visible.length) return { today: todayKey(), day: todayKey(), rows: [] };
 
     let q = supabaseAdmin
       .from("profiles")
       .select("id, full_name, attraction, active")
-      .eq("active", true);
-    // "Meu time": mesmo admin/gerente/direção (que normalmente enxergam
-    // tudo) podem pedir explicitamente só quem lideram direto — útil pra
-    // quem acumula um papel maior mas também lidera um time pequeno
-    // (ex.: sócio que é admin E co-líder de algumas pessoas do Lab).
+      .eq("active", true)
+      .in("id", visible);
+    // "Meu time": só quem a pessoa lidera direto (líder/co-líder), sempre
+    // dentro do que ela pode ver.
     if (data.mineOnly) {
       q = q.or(`manager_id.eq.${context.userId},co_leader_id.eq.${context.userId}`);
-    } else if (seesAll) {
-      if (data.attraction) q = q.eq("attraction", data.attraction);
-    } else if (seesWholeAttraction) {
-      q = q.eq("attraction", myProfile?.attraction ?? "__none__");
-    } else {
-      q = q.or(`manager_id.eq.${context.userId},co_leader_id.eq.${context.userId}`);
+    } else if (isAdmin && data.attraction) {
+      q = q.eq("attraction", data.attraction);
     }
     const { data: people, error } = await q;
     if (error) throw new Error(error.message);

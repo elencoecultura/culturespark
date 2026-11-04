@@ -32,12 +32,10 @@ async function scopedRespondentIds(supabase: any, userId: string): Promise<strin
   const hasTodosScope = myProfile?.attraction === "TODOS" || myProfile?.negocio === "TODOS";
   if (isAdminRole || hasTodosScope) return null;
 
-  // gerente/direção: a atração/casa inteira (inclui a si mesmo, se responder)
-  const { data: profiles } = await supabaseAdmin
-    .from("profiles")
-    .select("id")
-    .eq("attraction", myProfile?.attraction ?? "__none__");
-  return (profiles ?? []).map((p: { id: string }) => p.id);
+  // gerente/direção: quem ela pode ver pela regra única (lista da planilha
+  // ou a casa inteira para quem não tem lista), mais ela mesma.
+  const { visibleUserIds } = await import("@/lib/scope.server");
+  return [userId, ...(await visibleUserIds(userId))];
 }
 
 const NPS_WINDOW_DAYS = 3;

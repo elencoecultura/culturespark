@@ -148,9 +148,7 @@ export const submitDiscTest = createServerFn({ method: "POST" })
   });
 
 // Resultado sempre visível pra quem lidera (share_with_leadership deixou de
-// ser opcional). Escopo: admin (ou attraction/negocio="TODOS") vê tudo,
-// gerente/direção vê a própria casa inteira, líder vê só quem lidera direto
-// (manager_id/co_leader_id apontando pra ele) — igual ao resto do app.
+// ser opcional). Escopo pela regra única (scope.server.ts).
 export const listTeamDiscResults = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -160,19 +158,18 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
       ),
     );
     if (!checks.some((c: any) => c.data)) throw new Error("Forbidden");
-    const [isAdmin, , isGerente, isDirecao] = checks.map((c: any) => c.data);
+    const [isAdmin] = checks.map((c: any) => c.data);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: myProfile } = await supabaseAdmin
-      .from("profiles")
-      .select("attraction, negocio")
-      .eq("id", context.userId)
-      .maybeSingle();
-    const hasTodosScope = myProfile?.attraction === "TODOS" || myProfile?.negocio === "TODOS";
-    const seesAll = isAdmin || hasTodosScope;
-    const seesWholeCasa = seesAll || isGerente || isDirecao;
+    // Escopo pela regra única (planilha de acessos / hierarquia / admin).
+    const { visibleUserIds } = await import("@/lib/scope.server");
+    const visible = await visibleUserIds(context.userId);
+    const seesAll = !!isAdmin;
 
-    const res = await context.supabase
+    // Service role: a RLS de behavioral_tests só deixa admin ler o resultado
+    // dos outros, então líder/gerente nunca via o próprio time. O escopo é
+    // aplicado logo abaixo com a regra única.
+    const res = await supabaseAdmin
       .from("behavioral_tests")
       .select(
         "user_id, taken_at, score_d, score_i, score_s, score_c, primary_essence, secondary_essence, combination, profile_type",
@@ -205,17 +202,7 @@ export const listTeamDiscResults = createServerFn({ method: "GET" })
         };
     const profById = new Map((profs ?? []).map((p) => [p.id, p]));
 
-    const base = seesAll
-      ? allBase
-      : seesWholeCasa
-        ? allBase.filter((r) => {
-            const p = profById.get(r.user_id);
-            return (p?.attraction ?? p?.negocio) === myProfile?.attraction;
-          })
-        : allBase.filter((r) => {
-            const p = profById.get(r.user_id);
-            return p?.manager_id === context.userId || p?.co_leader_id === context.userId;
-          });
+    const base = seesAll ? allBase : allBase.filter((r) => visible.has(r.user_id));
 
     type GroupBucket = { distribution: Record<Essence, number>; scoreSum: Record<Essence, number>; total: number };
     const distribution: Record<Essence, number> = { D: 0, I: 0, S: 0, C: 0 };
