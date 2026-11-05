@@ -14,6 +14,12 @@ export type Database = {
   }
   public: {
     Tables: {
+      report_audit: {
+        Row: { action: string; created_at: string; filters: Json; id: string; report: string; user_id: string }
+        Insert: { action: string; created_at?: string; filters?: Json; id?: string; report: string; user_id: string }
+        Update: { action?: string; created_at?: string; filters?: Json; id?: string; report?: string; user_id?: string }
+        Relationships: []
+      }
       access_scopes: {
         Row: { created_at: string; created_by: string | null; empresa: string; setor: string; user_id: string }
         Insert: { created_at?: string; created_by?: string | null; empresa?: string; setor?: string; user_id?: string }

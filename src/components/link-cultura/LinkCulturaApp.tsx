@@ -61,6 +61,7 @@ import KudosAuditAdmin from "./KudosAuditAdmin";
 import IluminariAdmin from "./IluminariAdmin";
 import CheckinsDashboard from "./CheckinsDashboard";
 import PermissoesAdmin from "./PermissoesAdmin";
+import RelatoriosAdmin from "./RelatoriosAdmin";
 import { trackModuleAccess } from "@/lib/permissions.functions";
 import { MODULE_KEYS } from "@/lib/permissions-catalog";
 import { SUPREME_EMAILS } from "@/lib/wellbeing.functions";
@@ -2152,7 +2153,7 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
 
 /* ---------- Shell ---------- */
 
-type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "kudos-audit" | "iluminari-admin" | "checkins-dashboard" | "culture-overview" | "install-guide" | "accounts-admin" | "nps-results" | "wellbeing-timeline" | "pesquisas" | "celebracao" | "permissoes";
+type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "kudos-audit" | "iluminari-admin" | "checkins-dashboard" | "culture-overview" | "install-guide" | "accounts-admin" | "nps-results" | "wellbeing-timeline" | "pesquisas" | "celebracao" | "permissoes" | "relatorios";
 
 function BottomNav({
   active,
@@ -2293,6 +2294,7 @@ export default function LinkCulturaApp() {
       const adminItems: { id: TabId; label: string; icon: LucideIcon; desc: string }[] = [
         { id: "culture-overview", label: "Indicadores de cultura", icon: Gauge, desc: "Painel geral com tudo num só lugar" },
         { id: "pesquisas", label: "Pesquisas (NPS)", icon: ClipboardList, desc: "Criar pesquisas com várias perguntas e ver as respostas" },
+        { id: "relatorios", label: "Relatórios", icon: BarChart3, desc: "PDF e Excel de reconhecimento, engajamento, NPS, avaliações e Bússola" },
         { id: "permissoes", label: "Permissões de Usuários", icon: ShieldAlert, desc: "Empresas, setores, pessoas, módulos e perfil" },
         { id: "accounts-admin", label: "Contas cadastradas", icon: KeyRound, desc: "Trocar email, senha ou gerar link de acesso" },
         { id: "broadcast", label: "Enviar recado", icon: Send, desc: "Notificar todo o elenco" },
@@ -2341,6 +2343,8 @@ export default function LinkCulturaApp() {
       case "birthdays": return <BirthdaysScreen myUserId={profile?.id ?? ""} />;
       case "celebracao": return <CelebracaoScreen myUserId={profile?.id ?? ""} isAdmin={isAdmin} />;
       case "permissoes": return isAdmin ? <PermissoesAdmin /> : null;
+      // Relatórios: só Administrador (o servidor também recusa qualquer outro perfil)
+      case "relatorios": return isAdmin ? <RelatoriosAdmin /> : null;
       case "bussola": return <Bussola name={name} />;
       case "disc-admin": return <BussolaAdmin />;
       case "wellbeing": return <WellbeingAdmin />;
