@@ -74,6 +74,10 @@ export const sendCompanyAnniversaryWish = createServerFn({ method: "POST" })
     z.object({ to_user: z.string().uuid(), message: z.string().trim().min(2).max(280) }).parse(d),
   )
   .handler(async ({ data, context }) => {
+    {
+      const { assertAction } = await import("@/lib/permissions.server");
+      await assertAction(context.userId, "celebrar");
+    }
     if (data.to_user === context.userId) throw new Error("Você não pode felicitar a si mesmo.");
     if (findBlockedTerm(data.message)) {
       throw new Error(

@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      access_scopes: {
+        Row: { created_at: string; created_by: string | null; empresa: string; setor: string; user_id: string }
+        Insert: { created_at?: string; created_by?: string | null; empresa?: string; setor?: string; user_id?: string }
+        Update: { created_at?: string; created_by?: string | null; empresa?: string; setor?: string; user_id?: string }
+        Relationships: []
+      }
+      leader_access_default: {
+        Row: { leader_id: string; member_id: string; motivo: string | null }
+        Insert: { leader_id?: string; member_id?: string; motivo?: string | null }
+        Update: { leader_id?: string; member_id?: string; motivo?: string | null }
+        Relationships: []
+      }
+      user_permission_overrides: {
+        Row: { allowed: boolean; key: string; updated_at: string; updated_by: string | null; user_id: string }
+        Insert: { allowed?: boolean; key?: string; updated_at?: string; updated_by?: string | null; user_id?: string }
+        Update: { allowed?: boolean; key?: string; updated_at?: string; updated_by?: string | null; user_id?: string }
+        Relationships: []
+      }
+      permission_audit: {
+        Row: { after: Json | null; before: Json | null; changed_by: string | null; created_at: string; field: string; id: string; target_user: string }
+        Insert: { after?: Json | null; before?: Json | null; changed_by?: string | null; created_at?: string; field?: string; id?: string; target_user?: string }
+        Update: { after?: Json | null; before?: Json | null; changed_by?: string | null; created_at?: string; field?: string; id?: string; target_user?: string }
+        Relationships: []
+      }
+      app_access_log: {
+        Row: { day: string; first_at: string; hits: number; last_at: string; module: string; user_id: string }
+        Insert: { day?: string; first_at?: string; hits?: number; last_at?: string; module?: string; user_id?: string }
+        Update: { day?: string; first_at?: string; hits?: number; last_at?: string; module?: string; user_id?: string }
+        Relationships: []
+      }
       company_anniversary_wishes: {
         Row: { anniversary_year: number; created_at: string; from_user: string; id: string; message: string; to_user: string; years: number }
         Insert: { anniversary_year: number; created_at?: string; from_user: string; id?: string; message: string; to_user: string; years: number }
@@ -1292,6 +1322,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      track_access: {
+        Args: { _module: string; _user_id: string }
+        Returns: undefined
+      }
       visible_user_ids: {
         Args: { _viewer_id: string }
         Returns: string[]

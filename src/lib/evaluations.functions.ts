@@ -184,6 +184,10 @@ export const createEvaluationForMember = createServerFn({ method: "POST" })
     z.object({ cycle_id: z.string().uuid(), evaluatee_id: z.string().uuid() }).parse(d),
   )
   .handler(async ({ data, context }) => {
+    {
+      const { assertAction } = await import("@/lib/permissions.server");
+      await assertAction(context.userId, "avaliar");
+    }
     const admin = await isAdmin(context.supabase, context.userId);
     if (!admin && !(await isLeadership(context.supabase, context.userId))) {
       throw new Error("Forbidden");
@@ -397,6 +401,10 @@ export const saveScore = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    {
+      const { assertAction } = await import("@/lib/permissions.server");
+      await assertAction(context.userId, "avaliar");
+    }
     const { error } = await context.supabase
       .from("evaluation_scores")
       .upsert(
@@ -457,6 +465,10 @@ export const savePdi = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    {
+      const { assertAction } = await import("@/lib/permissions.server");
+      await assertAction(context.userId, "avaliar");
+    }
     if (data.id) {
       const { error } = await context.supabase
         .from("evaluation_pdis")

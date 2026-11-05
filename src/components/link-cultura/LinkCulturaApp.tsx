@@ -60,6 +60,9 @@ import FlaggedKudosAdmin from "./FlaggedKudosAdmin";
 import KudosAuditAdmin from "./KudosAuditAdmin";
 import IluminariAdmin from "./IluminariAdmin";
 import CheckinsDashboard from "./CheckinsDashboard";
+import PermissoesAdmin from "./PermissoesAdmin";
+import { trackModuleAccess } from "@/lib/permissions.functions";
+import { MODULE_KEYS } from "@/lib/permissions-catalog";
 import { SUPREME_EMAILS } from "@/lib/wellbeing.functions";
 import { HeartCrack, Flag, ShieldAlert } from "lucide-react";
 import { listUsers, createUser, updateUser } from "@/lib/admin.functions";
@@ -2149,7 +2152,7 @@ function GamificationScreen({ myUserId }: { myUserId: string }) {
 
 /* ---------- Shell ---------- */
 
-type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "kudos-audit" | "iluminari-admin" | "checkins-dashboard" | "culture-overview" | "install-guide" | "accounts-admin" | "nps-results" | "wellbeing-timeline" | "pesquisas" | "celebracao";
+type TabId = "home" | "feedback" | "team" | "leader" | "points" | "iluminari" | "vagas" | "wifi" | "pre-reg" | "cycle" | "analytics" | "broadcast" | "evals" | "hierarquia" | "birthdays" | "bussola" | "disc-admin" | "wellbeing" | "flagged-kudos" | "kudos-audit" | "iluminari-admin" | "checkins-dashboard" | "culture-overview" | "install-guide" | "accounts-admin" | "nps-results" | "wellbeing-timeline" | "pesquisas" | "celebracao" | "permissoes";
 
 function BottomNav({
   active,
@@ -2213,7 +2216,13 @@ function BottomNav({
 export default function LinkCulturaApp() {
   const [tab, setTab] = useState<TabId>("home");
   const navigate = useNavigate();
-  const { profile, isLeader, isAdmin, isGerente, isDirecao, isLoading, canSelectBusiness } = useCurrentUser();
+  const { profile, isLeader, isAdmin, isGerente, isDirecao, isLoading, canSelectBusiness, canModule } = useCurrentUser();
+  const trackFn = useServerFn(trackModuleAccess);
+  // Registro de acesso por módulo (relatório de engajamento); não bloqueia nada.
+  useEffect(() => {
+    if (!profile?.id) return;
+    trackFn({ data: { module: tab } }).catch(() => {});
+  }, [tab, profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const frameContainer = useAppFrameContainer();
 
   const handleTabChange = (id: TabId) => {
@@ -2241,50 +2250,50 @@ export default function LinkCulturaApp() {
     if (isAdmin) {
       t.push({ id: "checkins-dashboard", label: "Indicadores", icon: Gauge });
     }
-    return t;
-  }, [isLeader, isAdmin]);
+    // Módulos bloqueados/liberados por pessoa (Permissões de Usuários)
+    return t.filter((x) => !MODULE_KEYS.has(x.id) || canModule(x.id));
+  }, [isLeader, isAdmin, canModule]);
 
   const moreGroups = useMemo(() => {
     const groups: { title: string; items: { id: TabId; label: string; icon: LucideIcon; desc: string }[] }[] = [];
 
     groups.push({
       title: "Pra você",
-      items: [
+      items: ([
         { id: "bussola", label: "Bússola das Essências", icon: Compass, desc: "Mapeamento comportamental (1x/ano)" },
         { id: "birthdays", label: "Aniversários", icon: Cake, desc: "Quem faz aniversário na semana" },
         { id: "celebracao", label: "Celebração da Magia", icon: Sparkles, desc: "Quem completa anos de casa na semana" },
         { id: "iluminari", label: "Iluminari", icon: Sun, desc: "Compartilhar um momento" },
         { id: "feedback", label: "Elogio Rápido", icon: MessageCircle, desc: "Envie e veja reconhecimentos" },
         { id: "install-guide", label: "Instalar o app", icon: Download, desc: "Passo a passo pra iPhone e Android" },
-      ],
+      ] as { id: TabId; label: string; icon: LucideIcon; desc: string }[]).filter((x) => !MODULE_KEYS.has(x.id) || canModule(x.id)),
     });
 
-    if (isLeader) {
-      const gestao: { id: TabId; label: string; icon: LucideIcon; desc: string }[] = [
-        { id: "points", label: "Gamificação", icon: Trophy, desc: "Ranking e conquistas" },
+    {
+      const gestao: { id: TabId; label: string; icon: LucideIcon; desc: string }[] = [];
+      // Gamificação fica no menu principal de quem não é liderança
+      if (isLeader) gestao.push({ id: "points", label: "Gamificação", icon: Trophy, desc: "Ranking e conquistas" });
+      gestao.push(
         { id: "analytics", label: "Performance da gamificação", icon: BarChart3, desc: "Consultas e snapshots por período" },
         { id: "vagas", label: "Vagas", icon: Briefcase, desc: "Briefings e recrutamento" },
-      ];
-      // Resultado de NPS pode ter comentário livre da pessoa — só gerente/
-      // direção/admin vê (líder comum reporta pro gerente, não pode ver o
-      // que é do escopo do próprio gerente dele).
-      if (!isAdmin && (isGerente || isDirecao)) {
-        gestao.push({ id: "nps-results", label: "Resultados do NPS", icon: Star, desc: "NPS e evolução da sua casa" });
-      }
-      // Evolução do bem-estar: sem comentário livre (só humor numérico), então
-      // líder comum também vê — mas escopado só ao próprio time.
+      );
+      // Resultado de NPS pode ter comentário livre da pessoa — padrão só
+      // gerente/direção (admin tem a tela Pesquisas).
+      if (!isAdmin) gestao.push({ id: "nps-results", label: "Resultados do NPS", icon: Star, desc: "NPS e evolução da sua casa" });
+      // Evolução do bem-estar: sem comentário livre (só humor numérico).
       gestao.push({ id: "wellbeing-timeline", label: "Evolução do bem-estar", icon: TrendingUp, desc: isAdmin || isGerente || isDirecao ? "Humor médio ao longo do tempo, por área" : "Humor médio da sua equipe ao longo do tempo" });
-      // Bússola: líder vê o resultado completo de quem lidera direto,
-      // gerente/direção da casa inteira, admin de todo mundo.
       gestao.push({ id: "disc-admin", label: "Bússola do time", icon: Compass, desc: "Perfis comportamentais do seu time" });
       if (!isAdmin) gestao.push({ id: "team", label: "Liderados", icon: Users, desc: "As pessoas que você acompanha" });
-      groups.push({ title: "Gestão", items: gestao });
+      // O padrão de cada perfil e as exceções por pessoa vêm do catálogo.
+      const visiveis = gestao.filter((x) => !MODULE_KEYS.has(x.id) || canModule(x.id));
+      if (visiveis.length) groups.push({ title: "Gestão", items: visiveis });
     }
 
     if (isAdmin) {
       const adminItems: { id: TabId; label: string; icon: LucideIcon; desc: string }[] = [
         { id: "culture-overview", label: "Indicadores de cultura", icon: Gauge, desc: "Painel geral com tudo num só lugar" },
         { id: "pesquisas", label: "Pesquisas (NPS)", icon: ClipboardList, desc: "Criar pesquisas com várias perguntas e ver as respostas" },
+        { id: "permissoes", label: "Permissões de Usuários", icon: ShieldAlert, desc: "Empresas, setores, pessoas, módulos e perfil" },
         { id: "accounts-admin", label: "Contas cadastradas", icon: KeyRound, desc: "Trocar email, senha ou gerar link de acesso" },
         { id: "broadcast", label: "Enviar recado", icon: Send, desc: "Notificar todo o elenco" },
         { id: "flagged-kudos", label: "Elogios sinalizados", icon: Flag, desc: "Revisar mensagens marcadas pela moderação" },
@@ -2309,7 +2318,7 @@ export default function LinkCulturaApp() {
     }
 
     return groups;
-  }, [isLeader, isAdmin, isGerente, isDirecao, profile]);
+  }, [isLeader, isAdmin, isGerente, isDirecao, profile, canModule]);
 
   const moreTabs = useMemo(() => moreGroups.flatMap((g) => g.items), [moreGroups]);
 
@@ -2331,6 +2340,7 @@ export default function LinkCulturaApp() {
       case "iluminari": return <IluminariScreen myUserId={profile?.id ?? ""} isAdmin={isAdmin} />;
       case "birthdays": return <BirthdaysScreen myUserId={profile?.id ?? ""} />;
       case "celebracao": return <CelebracaoScreen myUserId={profile?.id ?? ""} isAdmin={isAdmin} />;
+      case "permissoes": return isAdmin ? <PermissoesAdmin /> : null;
       case "bussola": return <Bussola name={name} />;
       case "disc-admin": return <BussolaAdmin />;
       case "wellbeing": return <WellbeingAdmin />;

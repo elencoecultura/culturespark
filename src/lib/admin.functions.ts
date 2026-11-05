@@ -26,6 +26,10 @@ async function myLeadershipTier(supabase: any, userId: string) {
 export const listUsers = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    {
+      const { assertAction } = await import("@/lib/permissions.server");
+      await assertAction(context.userId, "ver_perfil");
+    }
     const tier = await myLeadershipTier(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -149,9 +153,16 @@ export const getMyContext = createServerFn({ method: "GET" })
       .from("user_roles")
       .select("role")
       .eq("user_id", context.userId);
+    const { data: ov } = await supabaseAdmin
+      .from("user_permission_overrides")
+      .select("key, allowed")
+      .eq("user_id", context.userId);
+    const overrides: Record<string, boolean> = {};
+    for (const o of ov ?? []) overrides[o.key] = o.allowed;
     return {
       userId: context.userId,
       profile,
       roles: (roles ?? []).map((r) => r.role as string),
+      overrides,
     };
   });

@@ -221,6 +221,10 @@ export const markScheduleCompleted = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    {
+      const { assertAction } = await import("@/lib/permissions.server");
+      await assertAction(context.userId, "editar_escala");
+    }
     // "leader" não existe mais como papel (virou "lider"/"gerente"/"direcao").
     const checks = await Promise.all(
       (["admin", "lider", "leader", "gerente", "direcao"] as const).map((role) =>

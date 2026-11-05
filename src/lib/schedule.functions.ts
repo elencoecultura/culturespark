@@ -57,6 +57,10 @@ export const upsertSchedule = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    {
+      const { assertAction } = await import("@/lib/permissions.server");
+      await assertAction(context.userId, "editar_escala");
+    }
     // "leader" não existe mais como papel (virou "lider"/"gerente"/"direcao").
     const checks = await Promise.all(
       (["admin", "lider", "leader", "gerente", "direcao"] as const).map((role) =>
@@ -79,6 +83,10 @@ export const deleteSchedule = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
+    {
+      const { assertAction } = await import("@/lib/permissions.server");
+      await assertAction(context.userId, "editar_escala");
+    }
     // Antes não checava nada no servidor (só RLS): apagar e recriar a escala
     // gerava um id novo e +20 pts de novo. Agora exige liderança e escopo.
     const { data: isAdmin } = await context.supabase.rpc("has_role", { _user_id: context.userId, _role: "admin" });

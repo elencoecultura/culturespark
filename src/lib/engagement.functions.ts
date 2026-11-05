@@ -239,6 +239,10 @@ export const sendKudos = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    {
+      const { assertAction } = await import("@/lib/permissions.server");
+      await assertAction(context.userId, "reconhecer");
+    }
     if (data.to_user === context.userId) {
       throw new Error("Você não pode mandar um elogio pra você mesmo.");
     }

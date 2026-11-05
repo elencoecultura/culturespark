@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { getMyContext } from "@/lib/admin.functions";
+import { can } from "@/lib/permissions-catalog";
 
 export function useCurrentUser() {
   const fn = useServerFn(getMyContext);
@@ -24,5 +25,8 @@ export function useCurrentUser() {
     isLeader: isLider || isGerente || isDirecao || isAdmin,
     // Pode escolher negócio livremente (filtro de Dashboard)
     canSelectBusiness: isAdmin || isDirecao,
+    // Módulos/ações pelo catálogo (perfil + liberação individual)
+    canModule: (key: string) => can("module", key, roles, q.data?.overrides ?? {}),
+    canAction: (key: string) => can("action", key, roles, q.data?.overrides ?? {}),
   };
 }
