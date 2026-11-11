@@ -149,7 +149,8 @@ export const createTestEvaluation = createServerFn({ method: "POST" })
     return { id: evalId!, cycle_id: cycleId! };
   });
 
-// Lista membros que o usuário atual pode avaliar (admin = todos ativos; líder = seus liderados diretos/co-liderados).
+// Lista membros que o usuário atual pode avaliar (admin = todos ativos; líder =
+// quem ele vê pela lista de permissões, a mesma regra do resto do app).
 export const listEvaluableMembers = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -157,18 +158,12 @@ export const listEvaluableMembers = createServerFn({ method: "GET" })
     if (!admin && !(await isLeadership(context.supabase, context.userId))) {
       throw new Error("Forbidden");
     }
-    let q = context.supabase
+    const { data, error } = await context.supabase
       .from("profiles")
       .select("id, full_name, attraction, negocio")
       .eq("active", true)
       .order("full_name");
-    if (!admin) {
-      q = q.or(`manager_id.eq.${context.userId},co_leader_id.eq.${context.userId}`);
-    }
-    const { data, error } = await q;
     if (error) throw new Error(error.message);
-    // Avaliar = liderado direto/co-liderado E dentro do que o líder pode ver
-    // (planilha de acessos). Ex.: co-líder que a planilha tirou não avalia.
     let visible: Set<string> | null = null;
     if (!admin) {
       const { visibleUserIds } = await import("@/lib/scope.server");
@@ -193,27 +188,16 @@ export const createEvaluationForMember = createServerFn({ method: "POST" })
       throw new Error("Forbidden");
     }
 
-    // Se não é admin, valida que o alvo é liderado direto ou co-liderado
+    // Se não é admin, o alvo precisa estar no escopo do líder (lista de permissões)
     if (!admin) {
-      const { data: target } = await context.supabase
-        .from("profiles")
-        .select("manager_id, co_leader_id")
-        .eq("id", data.evaluatee_id)
-        .maybeSingle();
-      if (
-        !target ||
-        (target.manager_id !== context.userId && target.co_leader_id !== context.userId)
-      ) {
-        throw new Error("Você não é líder desse membro.");
-      }
       const { visibleUserIds } = await import("@/lib/scope.server");
-      if (!(await visibleUserIds(context.userId)).has(data.evaluatee_id)) {
+      if (data.evaluatee_id === context.userId || !(await visibleUserIds(context.userId)).has(data.evaluatee_id)) {
         throw new Error("Você não tem acesso a esse membro.");
       }
     }
 
-    // A partir daqui a autorização já foi validada acima (admin, ou líder/co-líder
-    // direto do avaliado) — usamos supabaseAdmin pros writes porque a RLS de
+    // A partir daqui a autorização já foi validada acima (admin, ou alvo no
+    // escopo do líder) — usamos supabaseAdmin pros writes porque a RLS de
     // "evaluations"/"evaluation_evaluators" só libera INSERT pra admin, e não
     // queremos que a checagem de autorização dependa de duas camadas divergentes.
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -563,7 +547,7 @@ export const getEvaluationDashboard = createServerFn({ method: "GET" })
   .handler(async ({ data, context }) => {
     // Só liderança acessa o painel — a RLS de "evaluations" (can_access_evaluation)
     // já restringe as linhas trazidas ao próprio time de quem chama (avaliado,
-    // avaliador designado, ou manager_id/co_leader_id do avaliado), então os
+    // avaliador designado, ou avaliado no escopo de can_view_user_data), então os
     // agregados abaixo já saem escopados certos pra líder vs. gerente vs. admin.
     const roleChecks = await Promise.all(
       (["admin", "lider", "leader", "gerente", "direcao"] as const).map((role) =>
