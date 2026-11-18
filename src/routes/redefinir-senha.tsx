@@ -5,7 +5,7 @@ import LiquidBackground from "@/components/link-cultura/LiquidBackground";
 import hectorLogo from "@/assets/hector-logo.png";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { enforceWifiLock } from "@/lib/wifi.functions";
+import { passLoginGate } from "@/lib/login-gate";
 
 export const Route = createFileRoute("/redefinir-senha")({
   head: () => ({
@@ -67,12 +67,13 @@ function RedefinirSenhaPage() {
     // Mesma trava de Wi-Fi do login normal — sem isso, redefinir senha era
     // um jeito de entrar sem passar pela checagem de rede.
     try {
-      const check = await enforceWifiLock();
-      if (!check.allowed) {
+      const gate = await passLoginGate();
+      if (!gate.ok) {
         await supabase.auth.signOut();
         setLoading(false);
-        toast.error("Rede não autorizada", {
-          description: `Sua senha foi salva, mas este Wi-Fi (${check.ip || "IP desconhecido"}) não está liberado. Conecte-se ao Wi-Fi do parque e entre de novo.`,
+        toast.error(gate.title, {
+          description: `Sua senha foi salva. ${gate.description}`,
+          duration: 12_000,
         });
         navigate({ to: "/login" });
         return;

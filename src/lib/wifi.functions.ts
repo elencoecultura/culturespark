@@ -15,72 +15,34 @@ const ipSchema = z
   .max(64)
   .regex(/^[a-fA-F0-9.:]+(\/\d{1,3})?$/, "IP inválido");
 
-// Match an IP against entries (supports IPv4 CIDR like 10.101.0.0/24)
-function ipv4ToInt(ip: string): number | null {
-  const parts = ip.split(".");
-  if (parts.length !== 4) return null;
-  let n = 0;
-  for (const p of parts) {
-    const o = Number(p);
-    if (!Number.isInteger(o) || o < 0 || o > 255) return null;
-    n = (n << 8) + o;
-  }
-  return n >>> 0;
-}
-
-function matchesEntry(clientIp: string, entry: string): boolean {
-  if (!clientIp) return false;
-  if (entry === clientIp) return true;
-  if (entry.includes("/")) {
-    const [base, bitsStr] = entry.split("/");
-    const bits = Number(bitsStr);
-    const a = ipv4ToInt(clientIp);
-    const b = ipv4ToInt(base);
-    if (a === null || b === null || !Number.isInteger(bits) || bits < 0 || bits > 32) return false;
-    if (bits === 0) return true;
-    const mask = (~0 << (32 - bits)) >>> 0;
-    return (a & mask) === (b & mask);
-  }
-  return false;
-}
+export const geoPointSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  accuracy: z.number().min(0).max(1_000_000),
+});
 
 /**
- * Called right after login. Returns whether the user is allowed to use the app
- * from the current network. Marks first_login_at on the very first successful access.
- *
- * Rules (04/11/2026):
- *  - admin, direção, gerente e líder: passam de qualquer rede
- *  - Trupe (attraction TRUPE): passa de qualquer rede
- *  - liberação manual no painel (wifi_bypass): passa
- *  - first access (first_login_at is null): allowed AND timestamped
- *  - subsequent access: allowed only if client IP is in wifi_allowlist
- *  - empty allowlist: allowed (lock not configured yet — graceful default)
+ * Chamado logo após o login. Passa de qualquer lugar: admin, líder, gerente,
+ * direção, Trupe, passe livre (wifi_bypass) e o 1º acesso. Os demais precisam
+ * estar num Wi-Fi da lista OU dentro do raio de uma unidade (ver
+ * presence.server.ts). Sem `geo` e fora do Wi-Fi, devolve
+ * reason "need_location" — o cliente pede o GPS e chama de novo com `geo`.
  */
 export const enforceWifiLock = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((d: unknown) => z.object({ geo: geoPointSchema.optional() }).parse(d ?? {}))
+  .handler(async ({ data, context }) => {
     const ip = clientIp();
-    const { supabase, userId } = context;
-
-    // Acesso de qualquer rede (decisão de 04/11/2026): líderes, gestores,
-    // diretores, admins e toda a Trupe. Os demais seguem a trava de rede.
-    const FREE_ROLES = ["admin", "direcao", "gerente", "lider"] as const;
-    const roleChecks = await Promise.all(
-      FREE_ROLES.map((role) => supabase.rpc("has_role", { _user_id: userId, _role: role })),
-    );
-    const isAdmin = !!roleChecks[0]?.data;
-    const hasFreeRole = roleChecks.some((r: any) => r.data);
-
-    // profile flag + per-user bypass (sensitive columns: read with admin client)
+    const { userId } = context;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { exemptionReason, evaluatePresence } = await import("@/lib/presence.server");
+
     const { data: prof } = await supabaseAdmin
       .from("profiles")
-      .select("first_login_at, wifi_bypass, attraction")
+      .select("first_login_at")
       .eq("id", userId)
       .maybeSingle();
-
     const firstAccess = !prof?.first_login_at;
-
     if (firstAccess) {
       await supabaseAdmin
         .from("profiles")
@@ -88,34 +50,12 @@ export const enforceWifiLock = createServerFn({ method: "POST" })
         .eq("id", userId);
     }
 
-    if (isAdmin) {
-      return { allowed: true as const, reason: "admin", ip, firstAccess };
-    }
-    if (hasFreeRole) {
-      return { allowed: true as const, reason: "leadership", ip, firstAccess };
-    }
-    if ((prof?.attraction ?? "").toUpperCase() === "TRUPE") {
-      return { allowed: true as const, reason: "trupe", ip, firstAccess };
-    }
-    if (prof?.wifi_bypass) {
-      return { allowed: true as const, reason: "bypass", ip, firstAccess };
-    }
-    if (firstAccess) {
-      return { allowed: true as const, reason: "first_access", ip, firstAccess };
-    }
+    const exempt = await exemptionReason(userId);
+    if (exempt) return { allowed: true as const, reason: exempt, ip, firstAccess };
+    if (firstAccess) return { allowed: true as const, reason: "first_access", ip, firstAccess };
 
-
-    // Read allowlist (table is admin-only via RLS) with the already-imported admin client
-    const { data: allow } = await supabaseAdmin.from("wifi_allowlist").select("ip");
-    const list = (allow ?? []).map((r) => r.ip);
-
-    if (list.length === 0) {
-      return { allowed: true as const, reason: "allowlist_empty", ip, firstAccess };
-    }
-    if (ip && list.some((entry) => matchesEntry(ip, entry))) {
-      return { allowed: true as const, reason: "ip_match", ip, firstAccess };
-    }
-    return { allowed: false as const, reason: "ip_blocked", ip, firstAccess };
+    const result = await evaluatePresence({ userId, context: "login", ip, geo: data.geo ?? null });
+    return { ...result, ip, firstAccess };
   });
 
 export const getMyIp = createServerFn({ method: "GET" })

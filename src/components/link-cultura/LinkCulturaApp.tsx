@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef, type ReactNode } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useAppFrameContainer } from "@/hooks/useAppFrameContainer";
-import { MoreHorizontal, Compass, Briefcase, Wifi, Plus, BarChart3, Cake, PartyPopper, Gift, Gauge, Download, KeyRound } from "lucide-react";
+import { MoreHorizontal, Compass, Briefcase, Wifi, Plus, BarChart3, Cake, PartyPopper, Gift, Gauge, Download, KeyRound, MapPin, LocateFixed } from "lucide-react";
 import {
   Home,
   Heart,
@@ -79,6 +79,9 @@ import { createIluminari, listIluminari, deleteIluminari } from "@/lib/iluminari
 import { listTodayCheckins } from "@/lib/absences.functions";
 import JobsScreen from "./JobsScreen";
 import { listAllowedIps, addAllowedIp, removeAllowedIp, listBypassUsers, setWifiBypass } from "@/lib/wifi.functions";
+import { listAllowedLocations, addAllowedLocation, updateAllowedLocation, removeAllowedLocation, listAccessAttempts } from "@/lib/locations.functions";
+import { describePresenceBlock, GeoError, getCurrentGeo } from "@/lib/geo-client";
+import { parseCoordinates } from "@/lib/security-rules";
 import PreRegistrationsAdmin from "./PreRegistrationsAdmin";
 import GamificationCycleAdmin from "./GamificationCycleAdmin";
 import GamificationAnalyticsAdmin from "./GamificationAnalyticsAdmin";
@@ -410,15 +413,39 @@ function EnergyCheckin({ name, streak, doneToday }: { name: string; streak: numb
   const isDone = done || doneToday;
   const hour = new Date().getHours();
   const greet = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+  // Todo check-in confere presença na unidade: se o Wi-Fi não bastar, o
+  // servidor pede a localização e o app reenvia com ela (a permissão fica
+  // salva no navegador depois do primeiro "Permitir").
+  const [locating, setLocating] = useState(false);
   const m = useMutation({
-    mutationFn: () => submitFn({ data: { mood: mood! } }),
+    mutationFn: async () => {
+      let r = await submitFn({ data: { mood: mood! } });
+      if (!r.ok && r.presence.reason === "need_location") {
+        setLocating(true);
+        try {
+          const geo = await getCurrentGeo();
+          r = await submitFn({ data: { mood: mood!, geo } });
+        } finally {
+          setLocating(false);
+        }
+      }
+      if (!r.ok) {
+        const msg = describePresenceBlock(r.presence, "fazer o check-in");
+        throw new GeoError(msg.title, msg.description);
+      }
+      return r;
+    },
     onSuccess: () => {
       toast.success("Check-in registrado", { description: "Obrigado por cuidar do clima." });
       setDone(true);
       qc.invalidateQueries({ queryKey: ["moods"] });
       qc.invalidateQueries({ queryKey: ["gamification"] });
     },
-    onError: (e: any) => toast.error("Não rolou registrar", { description: e.message }),
+    onError: (e: any) =>
+      toast.error(e instanceof GeoError ? e.title : "Não rolou registrar", {
+        description: e.message,
+        duration: e instanceof GeoError ? 12_000 : undefined,
+      }),
   });
 
   // "Reflita" só aparece logo após a PESSOA escolher 1-3 nesse carregamento
@@ -487,7 +514,12 @@ function EnergyCheckin({ name, streak, doneToday }: { name: string; streak: numb
             disabled={mood == null || m.isPending}
             className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-brand-grad px-5 py-3.5 text-[14px] font-bold text-white shadow-glow transition active:scale-[0.99] disabled:opacity-50"
           >
-            {m.isPending ? <Loader2 size={17} className="animate-spin" /> : mood == null ? "Escolha de 1 a 5" : "Registrar check-in"}
+            {m.isPending ? (
+              <>
+                <Loader2 size={17} className="animate-spin" />
+                {locating && "Confirmando sua localização…"}
+              </>
+            ) : mood == null ? "Escolha de 1 a 5" : "Registrar check-in"}
           </button>
         </>
       )}
@@ -1238,14 +1270,16 @@ function WifiAllowlistScreen() {
 
   return (
     <div className="mt-5 space-y-4">
+      <AllowedLocationsSection />
+      <AccessAttemptsSection />
       <GlassCard>
         <div className="flex items-center gap-2 text-white">
           <Wifi className="h-5 w-5" />
           <h2 className="font-display text-[17px] font-black tracking-[-0.02em]">Rede permitida</h2>
         </div>
         <p className="mt-2 text-[12.5px] leading-relaxed text-white/70">
-          1º acesso é livre (qualquer rede). Depois, só entra de um IP da lista abaixo.
-          Admin sempre passa. Lista vazia = sem bloqueio.
+          Login e check-in passam se a pessoa estiver num Wi-Fi desta lista <b>ou</b> dentro do raio
+          de uma unidade cadastrada acima. Liderança, Trupe e quem tem passe livre entram de qualquer lugar.
         </p>
         <div className="glass-chip mt-4 rounded-2xl px-4 py-3 text-[13px] text-white/85">
           <span className="text-white/60">Seu IP agora:</span>{" "}
@@ -1324,6 +1358,250 @@ function WifiAllowlistScreen() {
       </div>
 
       <WifiBypassSection />
+    </div>
+  );
+}
+
+type AllowedLocationRow = { id: string; name: string; lat: number; lng: number; radius_m: number; active: boolean };
+
+function AllowedLocationsSection() {
+  const qc = useQueryClient();
+  const listFn = useServerFn(listAllowedLocations);
+  const addFn = useServerFn(addAllowedLocation);
+  const updateFn = useServerFn(updateAllowedLocation);
+  const removeFn = useServerFn(removeAllowedLocation);
+  const { data, isLoading } = useQuery({ queryKey: ["allowed-locations"], queryFn: () => listFn() });
+
+  const [name, setName] = useState("");
+  const [coords, setCoords] = useState("");
+  const [radius, setRadius] = useState("200");
+  const [locating, setLocating] = useState(false);
+  const [lastAccuracy, setLastAccuracy] = useState<number | null>(null);
+  const parsed = parseCoordinates(coords);
+  const refresh = () => qc.invalidateQueries({ queryKey: ["allowed-locations"] });
+
+  const add = useMutation({
+    mutationFn: () =>
+      addFn({ data: { name: name.trim(), lat: parsed!.lat, lng: parsed!.lng, radius_m: Number(radius) || 200 } }),
+    onSuccess: () => {
+      refresh();
+      setName(""); setCoords(""); setRadius("200"); setLastAccuracy(null);
+      toast.success("Unidade cadastrada");
+    },
+    onError: (e: Error) => toast.error("Não rolou", { description: e.message }),
+  });
+  const update = useMutation({
+    mutationFn: (v: { id: string; active?: boolean; radius_m?: number }) => updateFn({ data: v }),
+    onSuccess: refresh,
+    onError: (e: Error) => toast.error("Não rolou", { description: e.message }),
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => removeFn({ data: { id } }),
+    onSuccess: () => { refresh(); toast.success("Unidade removida"); },
+  });
+
+  async function useMyLocation() {
+    setLocating(true);
+    try {
+      const g = await getCurrentGeo();
+      setCoords(`${g.lat.toFixed(6)}, ${g.lng.toFixed(6)}`);
+      setLastAccuracy(Math.round(g.accuracy));
+    } catch (e: any) {
+      toast.error(e instanceof GeoError ? e.title : "Não rolou", { description: e.message });
+    } finally {
+      setLocating(false);
+    }
+  }
+
+  const locations = (data?.locations ?? []) as AllowedLocationRow[];
+  const activeCount = locations.filter((l) => l.active).length;
+
+  return (
+    <div className="glass-soft space-y-3 rounded-[26px] p-5">
+      <div className="flex items-center gap-2 text-white">
+        <MapPin className="h-5 w-5" />
+        <h2 className="font-display text-[17px] font-black tracking-[-0.02em]">Unidades (localização)</h2>
+      </div>
+      <p className="text-[12.5px] leading-relaxed text-white/70">
+        Quem estiver dentro do raio de uma unidade ativa entra e faz check-in mesmo fora do Wi-Fi.
+        Com pelo menos uma unidade ativa, <b>todo check-in</b> passa a conferir a presença.
+      </p>
+      {data?.setupMissing && (
+        <Notice>Falta aplicar a migration de localização no Supabase. Até lá, vale só o Wi-Fi.</Notice>
+      )}
+      {!data?.setupMissing && !isLoading && activeCount === 0 && (
+        <Notice>Nenhuma unidade ativa: check-in livre e login só pelo Wi-Fi, como antes.</Notice>
+      )}
+
+      <div className="space-y-2">
+        {isLoading && <div className="grid place-items-center py-4"><Loader2 className="animate-spin text-white/50" /></div>}
+        {locations.map((l) => (
+          <div key={l.id} className={cn("glass-chip rounded-2xl px-4 py-3", !l.active && "opacity-60")}>
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[14px] font-semibold text-white">{l.name}</div>
+                <a
+                  href={`https://www.google.com/maps?q=${l.lat},${l.lng}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11.5px] text-celeste underline-offset-4 hover:underline"
+                >
+                  ver no mapa
+                </a>
+              </div>
+              <select
+                value={l.radius_m}
+                onChange={(e) => update.mutate({ id: l.id, radius_m: Number(e.target.value) })}
+                className="glass-input rounded-xl px-2 py-1.5 text-[12.5px] outline-none"
+                aria-label={`Raio de ${l.name}`}
+              >
+                {[...new Set([100, 150, 200, 300, 500, 800, 1000, l.radius_m])].sort((a, b) => a - b).map((r) => (
+                  <option key={r} value={r} className="text-blu">{r} m</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => update.mutate({ id: l.id, active: !l.active })}
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-[11.5px] font-semibold",
+                  l.active ? "bg-magic-green/25 text-magic-green" : "bg-white/10 text-white/70",
+                )}
+              >
+                {l.active ? "Ativa" : "Pausada"}
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmAction(`Remover ${l.name}?`, () => remove.mutate(l.id))}
+                className="rounded-full bg-white/10 p-2 text-white/80 transition hover:bg-pink/30 hover:text-white"
+                aria-label={`Remover ${l.name}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!name.trim() || !parsed) return;
+          add.mutate();
+        }}
+        className="space-y-2 border-t border-white/10 pt-3"
+      >
+        <h3 className="text-[13px] font-semibold uppercase tracking-[0.14em] text-white/70">Cadastrar unidade</h3>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Nome — ex: Ferrovia Secreta"
+          maxLength={80}
+          className="glass-input w-full rounded-2xl px-4 py-3 text-[14px] outline-none placeholder:text-white/40"
+        />
+        <button
+          type="button"
+          onClick={useMyLocation}
+          disabled={locating}
+          className="glass-chip flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[13.5px] font-semibold text-white disabled:opacity-60"
+        >
+          {locating ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
+          Usar minha localização atual
+        </button>
+        <input
+          value={coords}
+          onChange={(e) => { setCoords(e.target.value); setLastAccuracy(null); }}
+          placeholder="Ou cole coordenadas / link do Google Maps"
+          className="glass-input w-full rounded-2xl px-4 py-3 font-mono text-[13px] outline-none placeholder:font-sans placeholder:text-white/40"
+        />
+        {coords && !parsed && <p className="text-[12px] text-pink">Não reconheci as coordenadas.</p>}
+        {lastAccuracy != null && (
+          <p className={cn("text-[12px]", lastAccuracy > 100 ? "text-magic-amber" : "text-white/60")}>
+            Margem da localização: {lastAccuracy} m
+            {lastAccuracy > 100 && " — alta. Vá pra perto de uma janela ou área aberta e toque de novo."}
+          </p>
+        )}
+        <label className="flex items-center gap-3 text-[13px] text-white/75">
+          Raio
+          <select
+            value={radius}
+            onChange={(e) => setRadius(e.target.value)}
+            className="glass-input rounded-xl px-3 py-2 text-[13px] outline-none"
+          >
+            {[100, 150, 200, 300, 500, 800, 1000].map((r) => (
+              <option key={r} value={r} className="text-blu">{r} m</option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="submit"
+          disabled={add.isPending || !name.trim() || !parsed}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-grad py-3 text-[14px] font-semibold text-white shadow-glow transition active:scale-[0.99] disabled:opacity-60"
+        >
+          {add.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Plus className="h-4 w-4" /> Cadastrar</>}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+const ACCESS_REASON_LABEL: Record<string, string> = {
+  ip_match: "Wi-Fi liberado",
+  geo_inside: "Dentro da unidade",
+  geo_outside: "Fora da unidade",
+  geo_imprecise: "Localização imprecisa",
+  ip_blocked: "Wi-Fi não liberado",
+};
+
+function AccessAttemptsSection() {
+  const listFn = useServerFn(listAccessAttempts);
+  const [onlyBlocked, setOnlyBlocked] = useState(true);
+  const { data, isLoading } = useQuery({
+    queryKey: ["access-attempts", onlyBlocked],
+    queryFn: () => listFn({ data: { onlyBlocked } }),
+  });
+  type A = {
+    id: string; name: string; attraction: string | null; context: string; allowed: boolean; reason: string;
+    ip: string | null; nearest_location: string | null; distance_m: number | null; accuracy_m: number | null; created_at: string;
+  };
+  const attempts = (data?.attempts ?? []) as A[];
+
+  return (
+    <div className="glass-soft space-y-3 rounded-[26px] p-5">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="font-display text-[15px] font-black tracking-[-0.02em] text-white">Tentativas recentes</h3>
+        <button
+          type="button"
+          onClick={() => setOnlyBlocked((v) => !v)}
+          className="glass-chip rounded-full px-3 py-1.5 text-[11.5px] font-semibold text-white/85"
+        >
+          {onlyBlocked ? "Só bloqueadas" : "Todas"}
+        </button>
+      </div>
+      <p className="text-[12px] leading-relaxed text-white/60">
+        Mostra o IP de quem foi barrado (pra cadastrar Wi-Fi novo) e a distância até a unidade mais próxima
+        (pra ajustar raio). Não guardamos a localização exata.
+      </p>
+      {isLoading && <div className="grid place-items-center py-4"><Loader2 className="animate-spin text-white/50" /></div>}
+      {!isLoading && attempts.length === 0 && <Notice>Nada por aqui ainda.</Notice>}
+      <div className="max-h-80 space-y-1.5 overflow-auto pr-1">
+        {attempts.map((a) => (
+          <div key={a.id} className="glass-chip rounded-2xl px-3 py-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-[13px] font-semibold text-white">{a.name}</span>
+              <span className={cn("shrink-0 text-[11px] font-semibold", a.allowed ? "text-magic-green" : "text-pink")}>
+                {ACCESS_REASON_LABEL[a.reason] ?? a.reason}
+              </span>
+            </div>
+            <div className="mt-0.5 text-[11.5px] text-white/60">
+              {new Date(a.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+              {" · "}{a.context === "checkin" ? "check-in" : "login"}
+              {a.ip && <> · IP <span className="font-mono">{a.ip}</span></>}
+              {a.nearest_location && a.distance_m != null && <> · {a.distance_m} m de {a.nearest_location}</>}
+              {a.accuracy_m != null && <> (±{a.accuracy_m} m)</>}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -2305,7 +2583,7 @@ export default function LinkCulturaApp() {
         { id: "hierarquia", label: "Elenco & Hierarquia", icon: Users, desc: "Definir líder e co-líder de cada pessoa" },
         { id: "pre-reg", label: "Pré-cadastro", icon: UserPlus, desc: "Importar planilha do elenco" },
         { id: "cycle", label: "Ciclo da gamificação", icon: Trophy, desc: "Resetar pontos a cada N dias" },
-        { id: "wifi", label: "Rede permitida", icon: Wifi, desc: "Wi-Fi autorizado para login" },
+        { id: "wifi", label: "Locais e redes", icon: MapPin, desc: "Unidades e Wi-Fi liberados pra login e check-in" },
       ];
       const email = (profile as { email?: string | null } | null)?.email?.toLowerCase();
       if (email && SUPREME_EMAILS.includes(email)) {

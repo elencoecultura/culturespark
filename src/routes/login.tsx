@@ -5,7 +5,7 @@ import LiquidBackground from "@/components/link-cultura/LiquidBackground";
 import hectorLogo from "@/assets/hector-logo.png";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { enforceWifiLock } from "@/lib/wifi.functions";
+import { passLoginGate } from "@/lib/login-gate";
 
 
 export const Route = createFileRoute("/login")({
@@ -34,15 +34,14 @@ function LoginPage() {
       return;
     }
 
-    // Wi-Fi lock: first access free, depois só pelo IP autorizado (admin sempre passa)
+    // Trava de presença: Wi-Fi da unidade ou localização dentro do raio
+    // (1º acesso, liderança, Trupe e passe livre passam de qualquer lugar).
     try {
-      const check = await enforceWifiLock();
-      if (!check.allowed) {
+      const gate = await passLoginGate();
+      if (!gate.ok) {
         await supabase.auth.signOut();
         setLoading(false);
-        toast.error("Rede não autorizada", {
-          description: `Este Wi-Fi (${check.ip || "IP desconhecido"}) não está liberado. Conecte-se ao Wi-Fi do parque.`,
-        });
+        toast.error(gate.title, { description: gate.description, duration: 12_000 });
         return;
       }
     } catch (err) {

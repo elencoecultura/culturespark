@@ -14,6 +14,18 @@ export type Database = {
   }
   public: {
     Tables: {
+      allowed_locations: {
+        Row: { active: boolean; created_at: string; created_by: string | null; id: string; lat: number; lng: number; name: string; radius_m: number }
+        Insert: { active?: boolean; created_at?: string; created_by?: string | null; id?: string; lat: number; lng: number; name: string; radius_m?: number }
+        Update: { active?: boolean; created_at?: string; created_by?: string | null; id?: string; lat?: number; lng?: number; name?: string; radius_m?: number }
+        Relationships: []
+      }
+      access_attempts: {
+        Row: { accuracy_m: number | null; allowed: boolean; context: string; created_at: string; distance_m: number | null; id: string; ip: string | null; method: string; nearest_location: string | null; reason: string; user_id: string }
+        Insert: { accuracy_m?: number | null; allowed: boolean; context: string; created_at?: string; distance_m?: number | null; id?: string; ip?: string | null; method: string; nearest_location?: string | null; reason: string; user_id: string }
+        Update: { accuracy_m?: number | null; allowed?: boolean; context?: string; created_at?: string; distance_m?: number | null; id?: string; ip?: string | null; method?: string; nearest_location?: string | null; reason?: string; user_id?: string }
+        Relationships: []
+      }
       report_audit: {
         Row: { action: string; created_at: string; filters: Json; id: string; report: string; user_id: string }
         Insert: { action: string; created_at?: string; filters?: Json; id?: string; report: string; user_id: string }

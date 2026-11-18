@@ -1,7 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequestHeader } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { isBirthdayNear } from "@/lib/security-rules";
+import { isBirthdayNear, pickClientIp } from "@/lib/security-rules";
+import { geoPointSchema } from "@/lib/wifi.functions";
 
 // Moderação do Elogio Rápido: bloqueia o envio na hora (não deixa nem
 // registrar) quando a mensagem tem ofensa, discriminação, ameaça ou
@@ -132,7 +134,11 @@ export const submitMood = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) =>
     z
-      .object({ mood: z.number().int().min(1).max(5), note: z.string().max(500).optional() })
+      .object({
+        mood: z.number().int().min(1).max(5),
+        note: z.string().max(500).optional(),
+        geo: geoPointSchema.optional(),
+      })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
@@ -150,6 +156,23 @@ export const submitMood = createServerFn({ method: "POST" })
       throw new Error("Você já fez seu check-in hoje. Até amanhã!");
     }
 
+    // Presença: todo check-in confere se a pessoa está numa unidade (Wi-Fi da
+    // lista ou raio de localização). Quem é liberado de qualquer lugar (admin,
+    // liderança, Trupe, passe livre) passa direto. Sem `geo`, devolve
+    // need_location e o app pede o GPS e reenvia.
+    {
+      const { exemptionReason, evaluatePresence } = await import("@/lib/presence.server");
+      if (!(await exemptionReason(context.userId))) {
+        const presence = await evaluatePresence({
+          userId: context.userId,
+          context: "checkin",
+          ip: pickClientIp((name) => getRequestHeader(name)),
+          geo: data.geo ?? null,
+        });
+        if (!presence.allowed) return { ok: false as const, presence };
+      }
+    }
+
     // Grava pelo servidor: o banco não aceita mais INSERT direto do browser
     // (dava pra mandar created_at retroativo e ganhar pontos de dias passados).
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -158,7 +181,7 @@ export const submitMood = createServerFn({ method: "POST" })
       .insert({ user_id: context.userId, mood: data.mood, note: data.note ?? null });
     if (error) throw new Error(error.message);
     await checkLowEnergyEscalation(context);
-    return { ok: true };
+    return { ok: true as const };
   });
 
 // Reflexão do check-in (humor 1-3): tela de energia mostra a caixa "Reflita"
