@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { read, utils } from "xlsx";
-import { Loader2, Upload, Trash2, FileSpreadsheet, Check, X, Search, Users, UserPlus, Eye, EyeOff, Plus, CalendarDays } from "lucide-react";
+import { read, utils, writeFile } from "xlsx";
+import { Loader2, Upload, Trash2, FileSpreadsheet, Check, X, Search, Users, UserPlus, Eye, EyeOff, Plus, CalendarDays, Download, RotateCcw, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { confirmAction } from "@/lib/confirm";
 import { toIsoDate } from "@/lib/date-parse";
@@ -12,6 +12,8 @@ import {
   deletePreRegistration,
   createAccountForPreRegistration,
   updatePreRegistrationDates,
+  listPreRegistrationExclusions,
+  restorePreRegistrationExclusion,
 } from "@/lib/pre-registration.functions";
 
 type Row = {
@@ -480,6 +482,60 @@ function ManualAddForm({
   );
 }
 
+function ExclusionsSection() {
+  const qc = useQueryClient();
+  const listFn = useServerFn(listPreRegistrationExclusions);
+  const restoreFn = useServerFn(restorePreRegistrationExclusion);
+  const [open, setOpen] = useState(false);
+  const { data } = useQuery({ queryKey: ["pre-reg-exclusions"], queryFn: () => listFn() });
+  const restore = useMutation({
+    mutationFn: (name_normalized: string) => restoreFn({ data: { name_normalized } }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pre-reg-exclusions"] });
+      toast.success("Restaurado", { description: "Volta a entrar na próxima importação da planilha." });
+    },
+    onError: (e: Error) => toast.error("Não rolou", { description: e.message }),
+  });
+  const rows = data?.rows ?? [];
+  if (data?.setupMissing) return null;
+
+  return (
+    <div className="glass-soft rounded-[28px] p-5">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between gap-2 text-white">
+        <span className="flex items-center gap-2">
+          <UserX className="h-5 w-5" />
+          <span className="text-[17px] font-bold">Excluídos ({rows.length})</span>
+        </span>
+        <span className="text-[12px] text-white/60">{open ? "fechar" : "abrir"}</span>
+      </button>
+      <p className="mt-1 text-[11.5px] text-white/55">Não voltam quando a planilha é importada. Cadastrar a pessoa manualmente também restaura.</p>
+      {open && (
+        <div className="mt-3 space-y-1.5">
+          {rows.length === 0 && <p className="text-[12.5px] text-white/60">Ninguém excluído ainda.</p>}
+          {rows.map((r) => (
+            <div key={r.name_normalized} className="glass-chip flex items-center gap-3 rounded-2xl px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-semibold text-white">{r.full_name}</div>
+                <div className="text-[11px] text-white/55">
+                  excluído em {new Date(r.excluded_at).toLocaleDateString("pt-BR")}
+                  {r.email ? ` · ${r.email}` : ""}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => restore.mutate(r.name_normalized)}
+                className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[12px] font-semibold text-white/85 hover:bg-white/20"
+              >
+                <RotateCcw className="h-3.5 w-3.5" /> Restaurar
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PreRegistrationsAdmin() {
   const qc = useQueryClient();
   const importFn = useServerFn(importPreRegistrations);
@@ -505,6 +561,7 @@ export default function PreRegistrationsAdmin() {
         `${res.unchanged ?? 0} sem mudança`,
       ];
       if ((res.skipped ?? 0) > 0) parts.push(`${res.skipped} ignorados`);
+      if ((res.excluded ?? 0) > 0) parts.push(`${res.excluded} pulados (excluídos antes)`);
       toast.success("Pré-cadastro sincronizado", { description: parts.join(" · ") });
       setPreview(null);
       if (fileRef.current) fileRef.current.value = "";
@@ -513,13 +570,14 @@ export default function PreRegistrationsAdmin() {
   });
 
   const addOne = useMutation({
-    mutationFn: (row: Row) => importFn({ data: { rows: [row], replaceAll: false } }),
+    mutationFn: (row: Row) => importFn({ data: { rows: [row], replaceAll: false, manual: true } }),
     onSuccess: (res, row) => {
       qc.invalidateQueries({ queryKey: ["pre-regs"] });
       if (res.skipped > 0) {
         toast.error("Não rolou adicionar", { description: "Já existe alguém com esse nome ou email no pré-cadastro." });
       } else {
         toast.success(`${row.full_name} adicionado ao pré-cadastro`);
+        qc.invalidateQueries({ queryKey: ["pre-reg-exclusions"] });
       }
     },
     onError: (e: Error) => toast.error("Falha ao adicionar", { description: e.message }),
@@ -527,8 +585,38 @@ export default function PreRegistrationsAdmin() {
 
   const del = useMutation({
     mutationFn: (id: string) => deleteFn({ data: { id } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pre-regs"] }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["pre-regs"] });
+      qc.invalidateQueries({ queryKey: ["pre-reg-exclusions"] });
+      if (res.remembered) toast.success("Excluído", { description: "Não volta mais quando a planilha for importada." });
+      else toast.warning("Excluído, mas sem memória", { description: "Falta aplicar o SQL dos excluídos no Supabase: a pessoa pode voltar na próxima importação." });
+    },
+    onError: (e: Error) => toast.error("Não rolou excluir", { description: e.message }),
   });
+
+  // Planilha mestre a partir do que está no sistema (sem os excluídos, com as
+  // datas) — mesmas colunas que a importação lê, pra substituir o arquivo antigo.
+  function downloadUpdatedSheet() {
+    const br = (iso?: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
+    const rows = [...(list.data ?? [])]
+      .sort((a, b) => a.negocio.localeCompare(b.negocio) || a.full_name.localeCompare(b.full_name))
+      .map((r) => ({
+        NOME: r.full_name,
+        EMAIL: r.email ?? "",
+        CARGO: r.cargo ?? "",
+        TIPO: r.setor ?? "",
+        PERFIL: r.perfil,
+        EMPRESA: r.negocio,
+        "DATA DE NASCIMENTO": br(r.birth_date),
+        "DATA DE ADMISSÃO": br(r.admission_date),
+        STATUS: r.claimed_by ? "cadastrado" : "pendente",
+      }));
+    const ws = utils.json_to_sheet(rows);
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, ws, "Pré-cadastro");
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    writeFile(wb, `pre-cadastro-elenco-${today}.xlsx`);
+  }
 
   async function onFile(f: File) {
     setParsing(true);
@@ -570,6 +658,7 @@ export default function PreRegistrationsAdmin() {
   return (
     <div className="space-y-4">
       <ManualAddForm negocios={negocios} onSubmit={(row) => addOne.mutate(row)} isPending={addOne.isPending} />
+      <ExclusionsSection />
 
       {/* Upload card */}
       <div className="glass-soft rounded-[28px] p-5">
@@ -603,6 +692,15 @@ export default function PreRegistrationsAdmin() {
             {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             Escolher planilha
           </button>
+          <button
+            type="button"
+            onClick={downloadUpdatedSheet}
+            disabled={!list.data?.length}
+            className="flex items-center gap-2 rounded-2xl bg-white/15 px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-white/25 disabled:opacity-60"
+          >
+            <Download className="h-4 w-4" />
+            Baixar planilha atualizada
+          </button>
           <label className="flex items-center gap-2 text-[12.5px] text-white/80">
             <input
               type="checkbox"
@@ -618,6 +716,7 @@ export default function PreRegistrationsAdmin() {
         </div>
         <p className="mt-2 text-[11.5px] text-white/55">
           Reimportar a planilha não duplica ninguém: cadastros existentes são atualizados pelo email ou pelo nome.
+          Quem foi excluído aqui é pulado automaticamente, mesmo que ainda esteja na planilha.
         </p>
 
         {preview && (
@@ -705,7 +804,7 @@ export default function PreRegistrationsAdmin() {
           <PreRegRow
             key={r.id}
             row={r}
-            onDelete={() => confirmAction(`Apagar pré-cadastro de ${r.full_name}?`, () => del.mutate(r.id))}
+            onDelete={() => confirmAction(`Excluir ${r.full_name} do pré-cadastro? A pessoa não volta mais quando a planilha for importada.`, () => del.mutate(r.id))}
           />
         ))}
       </div>

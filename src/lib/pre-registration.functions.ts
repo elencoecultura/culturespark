@@ -34,11 +34,23 @@ export const importPreRegistrations = createServerFn({ method: "POST" })
     z.object({
       rows: z.array(rowSchema).min(1).max(2000),
       replaceAll: z.boolean().optional(),
+      // Cadastro manual: é intenção explícita (ex.: recontratação), então
+      // passa por cima da lista de excluídos e tira a pessoa dela.
+      manual: z.boolean().optional(),
     }).parse(d),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Quem foi excluído do pré-cadastro não volta pela planilha. Tabela pode
+    // ainda não existir (migration pendente): aí não filtra nada.
+    const { data: exclRows } = await supabaseAdmin
+      .from("pre_registration_exclusions")
+      .select("name_normalized, email");
+    const excludedNames = new Set((exclRows ?? []).map((r) => r.name_normalized));
+    const excludedEmails = new Set((exclRows ?? []).map((r) => (r.email ?? "").toLowerCase()).filter(Boolean));
+    let excluded = 0;
 
     if (data.replaceAll) {
       // Only delete unclaimed rows so we don't lose link to existing users
@@ -69,6 +81,14 @@ export const importPreRegistrations = createServerFn({ method: "POST" })
       if (nameKey) {
         if (seenName.has(nameKey)) { skipped++; continue; }
         seenName.set(nameKey, 1);
+      }
+      const isExcluded =
+        (nameKey && excludedNames.has(nameKey)) ||
+        (!!row.email && excludedEmails.has(row.email.toLowerCase().trim()));
+      if (isExcluded) {
+        if (!data.manual) { excluded++; continue; }
+        await supabaseAdmin.from("pre_registration_exclusions").delete().eq("name_normalized", nameKey);
+        if (row.email) await supabaseAdmin.from("pre_registration_exclusions").delete().ilike("email", row.email.trim());
       }
 
       // 1) Find existing row: by email first, then by normalized name (any negocio)
@@ -156,7 +176,7 @@ export const importPreRegistrations = createServerFn({ method: "POST" })
         inserted++;
       }
     }
-    return { inserted, updated, unchanged, skipped, total: data.rows.length };
+    return { inserted, updated, unchanged, skipped, excluded, total: data.rows.length };
   });
 
 
@@ -274,7 +294,51 @@ export const deletePreRegistration = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: pre } = await supabaseAdmin
+      .from("pre_registrations")
+      .select("full_name, name_normalized, email")
+      .eq("id", data.id)
+      .maybeSingle();
+    // Guarda na lista de excluídos antes de apagar, pra planilha não trazer de volta.
+    let remembered = false;
+    if (pre?.name_normalized) {
+      const { error: exErr } = await supabaseAdmin.from("pre_registration_exclusions").upsert({
+        name_normalized: pre.name_normalized,
+        full_name: pre.full_name,
+        email: pre.email ? pre.email.toLowerCase() : null,
+        excluded_by: context.userId,
+        excluded_at: new Date().toISOString(),
+      });
+      remembered = !exErr;
+    }
     const { error } = await supabaseAdmin.from("pre_registrations").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true, remembered };
+  });
+
+export const listPreRegistrationExclusions = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await supabaseAdmin
+      .from("pre_registration_exclusions")
+      .select("name_normalized, full_name, email, excluded_at")
+      .order("excluded_at", { ascending: false });
+    if (error) return { rows: [], setupMissing: true as const };
+    return { rows: data ?? [], setupMissing: false as const };
+  });
+
+export const restorePreRegistrationExclusion = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ name_normalized: z.string().min(1).max(200) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin
+      .from("pre_registration_exclusions")
+      .delete()
+      .eq("name_normalized", data.name_normalized);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

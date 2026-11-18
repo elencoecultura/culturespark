@@ -20,6 +20,12 @@ export type Database = {
         Update: { active?: boolean; created_at?: string; created_by?: string | null; id?: string; lat?: number; lng?: number; name?: string; radius_m?: number }
         Relationships: []
       }
+      pre_registration_exclusions: {
+        Row: { email: string | null; excluded_at: string; excluded_by: string | null; full_name: string; name_normalized: string }
+        Insert: { email?: string | null; excluded_at?: string; excluded_by?: string | null; full_name: string; name_normalized: string }
+        Update: { email?: string | null; excluded_at?: string; excluded_by?: string | null; full_name?: string; name_normalized?: string }
+        Relationships: []
+      }
       access_attempts: {
         Row: { accuracy_m: number | null; allowed: boolean; context: string; created_at: string; distance_m: number | null; id: string; ip: string | null; method: string; nearest_location: string | null; reason: string; user_id: string }
         Insert: { accuracy_m?: number | null; allowed: boolean; context: string; created_at?: string; distance_m?: number | null; id?: string; ip?: string | null; method: string; nearest_location?: string | null; reason: string; user_id: string }
