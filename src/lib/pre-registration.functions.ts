@@ -4,7 +4,17 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const PERFIS = ["ELENCO", "LÍDER", "LIDER", "GERENTE", "DIREÇÃO", "DIRECAO", "ADMIN"] as const;
 
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "data inválida")
+  .refine((v) => {
+    const y = Number(v.slice(0, 4));
+    return y >= 1900 && y <= 2100 && !Number.isNaN(Date.parse(v));
+  }, "data inválida");
+
 const rowSchema = z.object({
+  birth_date: isoDate.optional().nullable(),
+  admission_date: isoDate.optional().nullable(),
   full_name: z.string().trim().min(2).max(160),
   email: z.string().trim().email().optional().nullable(),
   cargo: z.string().trim().max(120).optional().nullable(),
@@ -71,13 +81,15 @@ export const importPreRegistrations = createServerFn({ method: "POST" })
         perfil: string;
         negocio: string;
         claimed_by: string | null;
+        birth_date: string | null;
+        admission_date: string | null;
       };
       let existing: ExistingRow | null = null;
 
       if (row.email) {
         const { data: ex } = await supabaseAdmin
           .from("pre_registrations")
-          .select("id, full_name, email, cargo, setor, perfil, negocio, claimed_by")
+          .select("id, full_name, email, cargo, setor, perfil, negocio, claimed_by, birth_date, admission_date")
           .ilike("email", row.email)
           .maybeSingle();
         existing = (ex as ExistingRow | null) ?? null;
@@ -86,7 +98,7 @@ export const importPreRegistrations = createServerFn({ method: "POST" })
         // prefer claimed > oldest
         const { data: candidates } = await supabaseAdmin
           .from("pre_registrations")
-          .select("id, full_name, email, cargo, setor, perfil, negocio, claimed_by, created_at")
+          .select("id, full_name, email, cargo, setor, perfil, negocio, claimed_by, birth_date, admission_date, created_at")
           .eq("name_normalized", nameKey)
           .order("claimed_by", { ascending: false, nullsFirst: false })
           .order("created_at", { ascending: true })
@@ -104,6 +116,9 @@ export const importPreRegistrations = createServerFn({ method: "POST" })
           setor: row.setor || null,
           perfil: row.perfil,
           negocio: row.negocio,
+          // Datas: planilha sem a coluna não apaga o que já estava salvo.
+          birth_date: row.birth_date ?? existing.birth_date,
+          admission_date: row.admission_date ?? existing.admission_date,
         };
         const changed =
           next.full_name !== existing.full_name ||
@@ -111,13 +126,16 @@ export const importPreRegistrations = createServerFn({ method: "POST" })
           (next.cargo ?? null) !== (existing.cargo ?? null) ||
           (next.setor ?? null) !== (existing.setor ?? null) ||
           next.perfil !== existing.perfil ||
-          next.negocio !== existing.negocio;
+          next.negocio !== existing.negocio ||
+          next.birth_date !== existing.birth_date ||
+          next.admission_date !== existing.admission_date;
 
         if (!changed) { unchanged++; continue; }
 
         const { error } = await (supabaseAdmin.from("pre_registrations") as any)
           .update(next).eq("id", existing.id);
         if (error) throw new Error(error.message);
+        if (isClaimed) await syncProfileDates(existing.claimed_by!, next.birth_date, next.admission_date);
         updated++;
       } else {
         const { error } = await supabaseAdmin.from("pre_registrations").insert({
@@ -127,6 +145,8 @@ export const importPreRegistrations = createServerFn({ method: "POST" })
           setor: row.setor || null,
           perfil: row.perfil,
           negocio: row.negocio,
+          birth_date: row.birth_date ?? null,
+          admission_date: row.admission_date ?? null,
         });
         if (error) {
           // Race against unique indexes → treat as duplicate, skip instead of failing the batch
@@ -140,6 +160,44 @@ export const importPreRegistrations = createServerFn({ method: "POST" })
   });
 
 
+// Quem já criou conta: as datas valem no perfil (aniversário e tempo de
+// empresa leem de lá), então mudança no pré-cadastro desce pro perfil.
+async function syncProfileDates(userId: string, birth: string | null, admission: string | null) {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const patch: Record<string, string> = {};
+  if (birth) patch.birth_date = birth;
+  if (admission) patch.admission_date = admission;
+  if (!Object.keys(patch).length) return;
+  const { error } = await (supabaseAdmin.from("profiles") as any).update(patch).eq("id", userId);
+  if (error) throw new Error(error.message);
+}
+
+export const updatePreRegistrationDates = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        birth_date: isoDate.nullable(),
+        admission_date: isoDate.nullable(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: pre, error } = await supabaseAdmin
+      .from("pre_registrations")
+      .update({ birth_date: data.birth_date, admission_date: data.admission_date })
+      .eq("id", data.id)
+      .select("claimed_by")
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!pre) throw new Error("Pré-cadastro não encontrado.");
+    if (pre.claimed_by) await syncProfileDates(pre.claimed_by, data.birth_date, data.admission_date);
+    return { ok: true, synced: !!pre.claimed_by };
+  });
+
 export const listPreRegistrations = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -147,7 +205,7 @@ export const listPreRegistrations = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data, error } = await supabaseAdmin
       .from("pre_registrations")
-      .select("id, full_name, email, cargo, setor, perfil, negocio, claimed_by, claimed_at, created_at")
+      .select("id, full_name, email, cargo, setor, perfil, negocio, claimed_by, claimed_at, created_at, birth_date, admission_date")
       .order("negocio")
       .order("full_name");
     if (error) throw new Error(error.message);

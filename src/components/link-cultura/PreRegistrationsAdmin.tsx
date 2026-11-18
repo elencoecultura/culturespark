@@ -2,14 +2,16 @@ import { useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { read, utils } from "xlsx";
-import { Loader2, Upload, Trash2, FileSpreadsheet, Check, X, Search, Users, UserPlus, Eye, EyeOff, Plus } from "lucide-react";
+import { Loader2, Upload, Trash2, FileSpreadsheet, Check, X, Search, Users, UserPlus, Eye, EyeOff, Plus, CalendarDays } from "lucide-react";
 import { toast } from "sonner";
 import { confirmAction } from "@/lib/confirm";
+import { toIsoDate } from "@/lib/date-parse";
 import {
   importPreRegistrations,
   listPreRegistrations,
   deletePreRegistration,
   createAccountForPreRegistration,
+  updatePreRegistrationDates,
 } from "@/lib/pre-registration.functions";
 
 type Row = {
@@ -19,7 +21,24 @@ type Row = {
   setor?: string | null;
   perfil: string;
   negocio: string;
+  birth_date?: string | null;
+  admission_date?: string | null;
 };
+
+function pickRaw(obj: Record<string, unknown>, candidates: string[]): unknown {
+  const norm = Object.fromEntries(Object.keys(obj).map((k) => [normalizeHeader(k), k]));
+  for (const c of candidates) {
+    const k = norm[normalizeHeader(c)];
+    if (k && obj[k] != null && String(obj[k]).trim() !== "") return obj[k];
+  }
+  return null;
+}
+
+function formatDateBR(iso?: string | null) {
+  if (!iso) return null;
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  return `${d}/${m}/${y}`;
+}
 
 const PERFIL_VALUES = new Set(["ELENCO", "LÍDER", "LIDER", "GERENTE", "DIREÇÃO", "DIRECAO", "ADMIN"]);
 
@@ -46,7 +65,7 @@ function parseSheet(file: File): Promise<Row[]> {
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
-        const wb = read(data, { type: "array" });
+        const wb = read(data, { type: "array", cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const json = utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
         const rows: Row[] = [];
@@ -63,6 +82,8 @@ function parseSheet(file: File): Promise<Row[]> {
             setor: pickKey(raw, ["TIPO", "SETOR", "setor", "tipo"]) || null,
             perfil,
             negocio: negocio.trim(),
+            birth_date: toIsoDate(pickRaw(raw, ["DATA DE NASCIMENTO", "DATA NASCIMENTO", "NASCIMENTO", "DT NASCIMENTO", "birth_date"])),
+            admission_date: toIsoDate(pickRaw(raw, ["DATA DE ADMISSAO", "DATA ADMISSAO", "ADMISSAO", "DT ADMISSAO", "admission_date"])),
           });
         }
         resolve(rows);
@@ -84,6 +105,8 @@ type PreRegRowData = {
   perfil: string;
   negocio: string;
   claimed_by?: string | null;
+  birth_date?: string | null;
+  admission_date?: string | null;
 };
 
 function genPassword() {
@@ -100,6 +123,19 @@ function PreRegRow({ row: r, onDelete }: { row: PreRegRowData; onDelete: () => v
   const [email, setEmail] = useState(r.email ?? "");
   const [password, setPassword] = useState(() => genPassword());
   const [showPass, setShowPass] = useState(false);
+  const datesFn = useServerFn(updatePreRegistrationDates);
+  const [editDates, setEditDates] = useState(false);
+  const [birth, setBirth] = useState(r.birth_date ?? "");
+  const [admission, setAdmission] = useState(r.admission_date ?? "");
+  const saveDates = useMutation({
+    mutationFn: () => datesFn({ data: { id: r.id, birth_date: birth || null, admission_date: admission || null } }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["pre-regs"] });
+      toast.success("Datas salvas", { description: res.synced ? "Atualizado também no perfil da pessoa." : undefined });
+      setEditDates(false);
+    },
+    onError: (e: Error) => toast.error("Não rolou salvar", { description: e.message }),
+  });
 
   const create = useMutation({
     mutationFn: () =>
@@ -134,7 +170,19 @@ function PreRegRow({ row: r, onDelete }: { row: PreRegRowData; onDelete: () => v
             {r.perfil} · {r.cargo ?? "—"} · {r.setor ?? "—"} · {r.negocio}
             {r.email ? ` · ${r.email}` : ""}
           </div>
+          <div className="truncate text-[11px] text-white/50">
+            nasc. {formatDateBR(r.birth_date) ?? "—"} · admissão {formatDateBR(r.admission_date) ?? "—"}
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setEditDates((v) => !v)}
+          className="rounded-full bg-white/10 p-2 text-white/80 hover:bg-white/20"
+          aria-label="Editar datas"
+          title="Datas de nascimento e admissão"
+        >
+          <CalendarDays className="h-4 w-4" />
+        </button>
         {!r.claimed_by && (
           <button
             type="button"
@@ -154,6 +202,36 @@ function PreRegRow({ row: r, onDelete }: { row: PreRegRowData; onDelete: () => v
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
+
+      {editDates && (
+        <div className="mt-3 grid gap-2 rounded-2xl border border-white/15 bg-white/5 p-3">
+          <div className="grid grid-cols-2 gap-2">
+            <DateField label="Nascimento" value={birth} onChange={setBirth} />
+            <DateField label="Admissão" value={admission} onChange={setAdmission} />
+          </div>
+          {r.claimed_by && (
+            <p className="text-[11px] text-white/55">Já tem conta: as datas também mudam no perfil da pessoa.</p>
+          )}
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEditDates(false)}
+              className="rounded-full bg-white/10 px-3 py-1.5 text-[12px] text-white hover:bg-white/20"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={saveDates.isPending}
+              onClick={() => saveDates.mutate()}
+              className="flex items-center gap-1.5 rounded-full bg-magic-green px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50"
+            >
+              {saveDates.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+              Salvar datas
+            </button>
+          </div>
+        </div>
+      )}
 
       {open && !r.claimed_by && (
         <div className="mt-3 grid gap-2 rounded-2xl border border-white/15 bg-white/5 p-3">
@@ -218,6 +296,22 @@ function PreRegRow({ row: r, onDelete }: { row: PreRegRowData; onDelete: () => v
   );
 }
 
+function DateField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="block">
+      <span className="ml-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-white/60">{label}</span>
+      <input
+        type="date"
+        value={value}
+        min="1900-01-01"
+        max="2100-12-31"
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 w-full rounded-xl bg-white/10 px-3 py-2 text-[13px] text-white outline-none [color-scheme:dark]"
+      />
+    </label>
+  );
+}
+
 const PERFIL_OPTIONS = ["ELENCO", "LÍDER", "GERENTE", "DIREÇÃO", "ADMIN"];
 
 function ManualAddForm({
@@ -236,8 +330,12 @@ function ManualAddForm({
   const [setor, setSetor] = useState("");
   const [perfil, setPerfil] = useState("ELENCO");
   const [negocio, setNegocio] = useState("");
+  const [birth, setBirth] = useState("");
+  const [admission, setAdmission] = useState("");
 
   function reset() {
+    setBirth("");
+    setAdmission("");
     setFullName("");
     setEmail("");
     setCargo("");
@@ -334,6 +432,10 @@ function ManualAddForm({
               </datalist>
             </label>
           </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            <DateField label="Nascimento" value={birth} onChange={setBirth} />
+            <DateField label="Admissão" value={admission} onChange={setAdmission} />
+          </div>
           <label className="block">
             <span className="ml-1 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-white/60">
               Email (opcional)
@@ -357,6 +459,8 @@ function ManualAddForm({
                 setor: setor.trim() || null,
                 perfil,
                 negocio: negocio.trim(),
+                birth_date: birth || null,
+                admission_date: admission || null,
               });
               reset();
               setOpen(false);
@@ -474,7 +578,7 @@ export default function PreRegistrationsAdmin() {
           <h2 className="text-[17px] font-bold">Pré-cadastro do elenco</h2>
         </div>
         <p className="mt-2 text-[12.5px] leading-relaxed text-white/70">
-          Suba a planilha mestre (.xlsx) com NOME, CARGO, TIPO, PERFIL e EMPRESA. Quando a pessoa
+          Suba a planilha mestre (.xlsx) com NOME, CARGO, TIPO, PERFIL e EMPRESA (opcional: DATA DE NASCIMENTO e DATA DE ADMISSÃO). Quando a pessoa
           fizer o cadastro, o nível dela já vem certo automaticamente.
         </p>
 
@@ -545,6 +649,8 @@ export default function PreRegistrationsAdmin() {
               {preview.slice(0, 12).map((r, i) => (
                 <div key={i} className="truncate">
                   {r.full_name} · {r.cargo ?? "—"} · {r.setor ?? "—"} · {r.perfil} · {r.negocio}
+                  {r.birth_date ? ` · nasc. ${formatDateBR(r.birth_date)}` : ""}
+                  {r.admission_date ? ` · admissão ${formatDateBR(r.admission_date)}` : ""}
                 </div>
               ))}
               {preview.length > 12 && <div className="opacity-60">…e mais {preview.length - 12}</div>}
