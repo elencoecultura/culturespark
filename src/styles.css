@@ -157,6 +157,31 @@
   -webkit-backdrop-filter: blur(20px);
   color: #fff;
 }
+/* Vidro dentro de vidro: só o de fora desfoca. Em alguns iPhones o
+   -webkit-backdrop-filter aninhado (cartão com blur dentro de painel com
+   blur) é pintado como branco sólido — o texto branco some e só sobram os
+   números coloridos. O de dentro já está sobre um fundo desfocado, então
+   tirar o blur dele não muda o visual. */
+:is(.glass-soft, .glass-strong, .glass-chip, .glass-input)
+  :is(.glass-soft, .glass-strong, .glass-chip, .glass-input) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+/* "Reduzir transparência" ligado no celular: vidro vira cor sólida escura
+   em vez de depender do blur. */
+@media (prefers-reduced-transparency: reduce) {
+  .glass-soft,
+  .glass-strong,
+  .glass-chip,
+  .glass-input {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .glass-soft,
+  .glass-strong {
+    background: rgba(16, 22, 78, 0.94);
+  }
+}
 @utility bg-brand-grad {
   background: var(--brand-grad);
 }
