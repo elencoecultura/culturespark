@@ -159,6 +159,11 @@ export const submitNpsResponse = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    // Check-in do dia é obrigatório antes de qualquer interação.
+    {
+      const { assertCheckedInToday } = await import("@/lib/checkin-gate.server");
+      await assertCheckedInToday(context.userId);
+    }
     // Pesquisa com várias perguntas: todas precisam de nota de 0 a 10 (o
     // comentário continua opcional) e não aceita nota pra pergunta que não
     // existe nessa pesquisa.

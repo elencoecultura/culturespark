@@ -98,6 +98,11 @@ export const submitDiscTest = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    // Check-in do dia é obrigatório antes de qualquer interação.
+    {
+      const { assertCheckedInToday } = await import("@/lib/checkin-gate.server");
+      await assertCheckedInToday(context.userId);
+    }
     // Pontuação a partir do mapeamento oficial (fonte de verdade no servidor).
     const scores: Record<Essence, number> = { D: 0, I: 0, S: 0, C: 0 };
     for (const a of data.answers) {

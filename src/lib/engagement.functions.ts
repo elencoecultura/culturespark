@@ -179,6 +179,8 @@ export const submitMood = createServerFn({ method: "POST" })
     const { error } = await supabaseAdmin
       .from("mood_checkins")
       .insert({ user_id: context.userId, mood: data.mood, note: data.note ?? null });
+    // 23505 = índice único de 1 check-in por dia (dois toques seguidos).
+    if (error?.code === "23505") throw new Error("Você já fez seu check-in hoje. Até amanhã!");
     if (error) throw new Error(error.message);
     await checkLowEnergyEscalation(context);
     return { ok: true as const };
@@ -272,57 +274,48 @@ export const sendKudos = createServerFn({ method: "POST" })
     if (findBlockedTerm(data.message)) {
       throw new Error("Essa mensagem não é apropriada pro ambiente corporativo — revise o texto e tente de novo.");
     }
+    // Check-in do dia é obrigatório antes de qualquer interação.
+    {
+      const { assertCheckedInToday } = await import("@/lib/checkin-gate.server");
+      await assertCheckedInToday(context.userId);
+    }
 
-    // Máximo 4 elogios "normais" por dia (fuso America/Sao_Paulo) — evita
-    // gente mandando vários só pra pontuar no ranking. Elogio de aniversário
-    // (category "aniversario") não entra nessa conta nem é bloqueado por
-    // ela — é celebração, não é o elogio que a gente quer limitar.
-    const KUDOS_PER_DAY_LIMIT = 4;
+    // Elogio é ILIMITADO por dia. O que segura o "elogio só pra pontuar" é a
+    // qualidade do texto (kudos-quality.ts): mínimo de palavras, repetição,
+    // texto sem sentido, falta de contexto e cópia de elogio que a própria
+    // pessoa já mandou. Reprovado não grava, então não gera ponto.
     const isBirthdayKudos = data.category === "aniversario";
+    const { evaluateKudos, KUDOS_GENTLE_MESSAGE } = await import("@/lib/kudos-quality");
     if (!isBirthdayKudos) {
-      // filtra "aniversario" em JS (não no banco): .neq() no Postgres exclui
-      // category NULL também (comparação com NULL vira desconhecido), o que
-      // ia derrubar a contagem pra quase todo mundo, já que elogio normal
-      // sempre tem category null.
-      const { data: recentSent } = await context.supabase
+      // Histórico de quem envia (90 dias) pra pegar elogio repetido com
+      // pequenas trocas. Filtra "aniversario" em JS: .neq() no Postgres
+      // também exclui category NULL, que é justamente o elogio normal.
+      const since = new Date(Date.now() - 90 * 86_400_000).toISOString();
+      const { supabaseAdmin: adminForHistory } = await import("@/integrations/supabase/client.server");
+      const { data: history } = await adminForHistory
         .from("kudos")
-        .select("created_at, category")
+        .select("message, category, to_user, created_at")
         .eq("from_user", context.userId)
+        .gte("created_at", since)
         .order("created_at", { ascending: false })
-        .limit(40);
-      const tz = "America/Sao_Paulo";
-      const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
-      const todayKey = fmt.format(new Date());
-      const sentToday = (recentSent ?? []).filter(
-        (r) => r.category !== "aniversario" && fmt.format(new Date(r.created_at as string)) === todayKey,
-      ).length;
-      if (sentToday >= KUDOS_PER_DAY_LIMIT) {
-        throw new Error(`Você já mandou ${KUDOS_PER_DAY_LIMIT} elogios hoje — volta amanhã pra mandar mais.`);
-      }
+        .limit(200);
+      const normal = (history ?? []).filter((r) => r.category !== "aniversario");
+      const verdict = evaluateKudos(data.message, normal.map((r) => r.message as string));
+      if (!verdict.ok) throw new Error(`${KUDOS_GENTLE_MESSAGE} ${verdict.hint}`);
 
-      // Cooldown de 7 dias pro MESMO destinatário — evita gente repetindo o
-      // elogio pra mesma pessoa todo dia só pra pontuar (aniversário fica de
-      // fora, já tem a própria regra de 1x/ano acima).
-      const KUDOS_SAME_PERSON_COOLDOWN_DAYS = 7;
-      const cooldownSince = new Date(Date.now() - KUDOS_SAME_PERSON_COOLDOWN_DAYS * 86_400_000).toISOString();
-      // Mesmo cuidado do filtro acima: .neq() no Postgres exclui category
-      // NULL junto (elogio normal sempre tem category null), então filtra
-      // "aniversario" em JS, não na query.
-      const { data: recentToSamePerson } = await context.supabase
-        .from("kudos")
-        .select("created_at, category")
-        .eq("from_user", context.userId)
-        .eq("to_user", data.to_user)
-        .gte("created_at", cooldownSince)
-        .order("created_at", { ascending: false })
-        .limit(10);
-      const lastToSamePerson = (recentToSamePerson ?? []).find((r) => r.category !== "aniversario");
-      if (lastToSamePerson) {
-        const nextAt = new Date(new Date(lastToSamePerson.created_at as string).getTime() + KUDOS_SAME_PERSON_COOLDOWN_DAYS * 86_400_000);
-        const nextLabel = nextAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "America/Sao_Paulo" });
-        throw new Error(`Você já elogiou essa pessoa nos últimos ${KUDOS_SAME_PERSON_COOLDOWN_DAYS} dias — pode mandar de novo a partir de ${nextLabel}.`);
+      // Para a MESMA pessoa, 1 elogio por dia: dá pra reconhecer o colega
+      // todo dia, mas não acumular vários elogios no mesmo dia para a mesma
+      // dupla só pra somar pontos.
+      const { saoPauloDayKey } = await import("@/lib/checkin-rules");
+      const today = saoPauloDayKey();
+      if (normal.some((r) => r.to_user === data.to_user && saoPauloDayKey(r.created_at as string) === today)) {
+        throw new Error("Você já elogiou essa pessoa hoje. Amanhã dá pra reconhecer de novo. Que tal elogiar outra pessoa do elenco?");
       }
     } else {
+      // Aniversário: o texto padrão do app é o mesmo pra todo mundo, então
+      // não compara com o histórico nem exige contexto; só o básico.
+      const verdict = evaluateKudos(data.message, [], { requireContext: false, checkDuplicates: false });
+      if (!verdict.ok) throw new Error(`${KUDOS_GENTLE_MESSAGE} ${verdict.hint}`);
       // Só vale como elogio de aniversário se a pessoa faz aniversário mesmo
       // (semana do aniversário, como na tela de Aniversários). Antes qualquer
       // um mandava category "aniversario" e escapava do limite diário.
@@ -421,6 +414,11 @@ export const toggleKudosLike = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => z.object({ kudos_id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
+    // Check-in do dia é obrigatório antes de qualquer interação.
+    {
+      const { assertCheckedInToday } = await import("@/lib/checkin-gate.server");
+      await assertCheckedInToday(context.userId);
+    }
     const { data: existing } = await context.supabase
       .from("kudos_likes")
       .select("id")

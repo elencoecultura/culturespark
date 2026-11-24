@@ -176,3 +176,50 @@ export function getDailyPhrase(date: Date = new Date()) {
 export function getPillar(key: PillarKey): Pillar {
   return PILLARS.find((p) => p.key === key)!;
 }
+
+// Escada para Magia (Segurança → Alegria → Honrar → Amar): sugestões de
+// reflexão que aparecem no check-in quando a energia está baixa. São só
+// estímulos: a pessoa escreve a própria resposta e não precisa escolher
+// nenhuma.
+export const ESCADA_PARA_MAGIA: { key: string; name: string; suggestions: string[] }[] = [
+  {
+    key: "seguranca",
+    name: "Segurança",
+    suggestions: [
+      "Identificar se existe alguma situação causando desconforto e buscar apoio.",
+      "Conversar com alguém de confiança ou com minha liderança.",
+      "Organizar minhas prioridades para evitar sobrecarga.",
+      "Ver se existe algo no ambiente de trabalho que precisa ser ajustado.",
+    ],
+  },
+  {
+    key: "alegria",
+    name: "Alegria",
+    suggestions: [
+      "Resgatar pequenas coisas que tornam o trabalho mais leve.",
+      "Fazer uma pausa consciente, respirar e reorganizar os pensamentos.",
+      "Buscar um momento de conexão com pessoas que me fazem bem.",
+      "Lembrar de algo que costuma trazer satisfação ao meu dia.",
+    ],
+  },
+  {
+    key: "honrar",
+    name: "Honrar",
+    suggestions: [
+      "Reconhecer meus limites e respeitar o momento que estou vivendo.",
+      "Identificar uma pequena conquista do dia.",
+      "Lembrar que não preciso dar conta de tudo sozinho.",
+      "Pensar no que está ao meu alcance mudar hoje.",
+    ],
+  },
+  {
+    key: "amar",
+    name: "Amar",
+    suggestions: [
+      "Praticar gentileza comigo mesmo.",
+      "Pedir ajuda se eu precisar.",
+      "Me aproximar de pessoas que fazem parte da minha rede de apoio.",
+      "Ter uma atitude de cuidado comigo e com quem está ao meu redor.",
+    ],
+  },
+];

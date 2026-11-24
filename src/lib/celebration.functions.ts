@@ -74,6 +74,11 @@ export const sendCompanyAnniversaryWish = createServerFn({ method: "POST" })
     z.object({ to_user: z.string().uuid(), message: z.string().trim().min(2).max(280) }).parse(d),
   )
   .handler(async ({ data, context }) => {
+    // Check-in do dia é obrigatório antes de qualquer interação.
+    {
+      const { assertCheckedInToday } = await import("@/lib/checkin-gate.server");
+      await assertCheckedInToday(context.userId);
+    }
     {
       const { assertAction } = await import("@/lib/permissions.server");
       await assertAction(context.userId, "celebrar");

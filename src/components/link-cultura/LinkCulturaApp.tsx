@@ -64,6 +64,8 @@ import PermissoesAdmin from "./PermissoesAdmin";
 import RelatoriosAdmin from "./RelatoriosAdmin";
 import { trackModuleAccess } from "@/lib/permissions.functions";
 import { MODULE_KEYS } from "@/lib/permissions-catalog";
+import { isCheckinRequiredError, saoPauloDayKey } from "@/lib/checkin-rules";
+import { KUDOS_GENTLE_MESSAGE, KUDOS_MIN_WORDS, tokenize } from "@/lib/kudos-quality";
 import { SUPREME_EMAILS } from "@/lib/wellbeing.functions";
 import { HeartCrack, Flag, ShieldAlert } from "lucide-react";
 import { listUsers, createUser, updateUser } from "@/lib/admin.functions";
@@ -87,7 +89,7 @@ import GamificationCycleAdmin from "./GamificationCycleAdmin";
 import GamificationAnalyticsAdmin from "./GamificationAnalyticsAdmin";
 import { BusinessProvider, useBusiness } from "./BusinessContext";
 import BusinessSelector from "./BusinessSelector";
-import { getDailyPhrase, getPillar } from "@/lib/culture-content";
+import { ESCADA_PARA_MAGIA, getDailyPhrase, getPillar } from "@/lib/culture-content";
 import { NotificationsBell, BroadcastAdminScreen, NpsResultsScreen } from "./Notifications";
 import { PesquisasAdmin } from "./Pesquisas";
 import WellbeingTimelineScreen from "./WellbeingTimelineScreen";
@@ -199,6 +201,30 @@ function MetricCard({ label, value, sub, icon: Icon, variant = "glass" as const,
 
 function Notice({ children }: { children: ReactNode }) {
   return <div className="glass-chip rounded-2xl p-4 text-[13px] leading-snug text-white/75">{children}</div>;
+}
+
+// Telas de participação (elogio, Iluminari, aniversários, celebração,
+// Bússola) mostram isso enquanto falta o check-in do dia. O servidor também
+// recusa a ação; o aviso só evita a pessoa escrever tudo e ser barrada.
+const CHECKIN_GATED_TABS = new Set<string>(["feedback", "iluminari", "birthdays", "celebracao", "bussola"]);
+
+function CheckinRequiredNotice({ onGo }: { onGo: () => void }) {
+  return (
+    <div className="glass-chip mt-4 flex items-center gap-3 rounded-2xl px-4 py-3">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/15">
+        <Sparkles size={17} />
+      </span>
+      <div className="min-w-0 flex-1 text-[12.5px] leading-snug text-white/85">
+        Faça seu check-in de energia de hoje para liberar elogios, curtidas, pesquisas e as outras interações.
+      </div>
+      <button
+        onClick={onGo}
+        className="shrink-0 rounded-full bg-white px-3.5 py-2 text-[12px] font-bold text-blu transition active:scale-95"
+      >
+        Fazer check-in
+      </button>
+    </div>
+  );
 }
 
 function TopBar({
@@ -453,6 +479,7 @@ function EnergyCheckin({ name, streak, doneToday }: { name: string; streak: numb
   // — nesse caso `mood` local está vazio e a caixa some, de propósito).
   const [reflection, setReflection] = useState("");
   const [reflectionSaved, setReflectionSaved] = useState(false);
+  const [pillarIdx, setPillarIdx] = useState(0);
   const showReflection = done && mood != null && mood <= 3 && !reflectionSaved;
   const rm = useMutation({
     mutationFn: () => reflectionFn({ data: { reflection: reflection.trim() } }),
@@ -485,14 +512,50 @@ function EnergyCheckin({ name, streak, doneToday }: { name: string; streak: numb
               <div className="flex items-center gap-1.5 text-[14.5px] font-bold text-white">
                 Reflita <Sparkles size={15} className="text-white/80" />
               </div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-white/70">
-                Percebemos que hoje o seu sentimento não está tão positivo. O que você pode fazer para mudar esse
-                sentimento?
+              <p className="mt-1.5 text-[13px] leading-relaxed text-white/75">
+                Nem todos os dias teremos a mesma energia, e tudo bem! O importante é reconhecer como estamos e pensar
+                em pequenos passos que podem nos ajudar. Que tal refletir sobre o que você pode fazer por você hoje?
               </p>
+
+              {/* Escada para Magia: só ideias pra inspirar. Tocar numa ideia
+                  coloca o texto no campo, e a pessoa edita como quiser. */}
+              <div className="mt-3 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/50">
+                Ideias da Escada para Magia
+              </div>
+              <div className="mt-2 grid grid-cols-4 gap-1 rounded-full bg-white/10 p-1">
+                {ESCADA_PARA_MAGIA.map((p, i) => (
+                  <button
+                    key={p.key}
+                    onClick={() => setPillarIdx(i)}
+                    className={cn(
+                      "rounded-full py-1.5 text-[11px] font-semibold transition",
+                      pillarIdx === i ? "bg-white text-blu" : "text-white/70",
+                    )}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 grid gap-1.5">
+                {ESCADA_PARA_MAGIA[pillarIdx].suggestions.map((sug) => (
+                  <button
+                    key={sug}
+                    onClick={() =>
+                      setReflection((cur) => (cur.trim() ? `${cur.trim()} ${sug}` : sug).slice(0, 500))
+                    }
+                    className="glass-chip flex items-start gap-2 rounded-2xl px-3 py-2 text-left text-[12.5px] leading-snug text-white/85 transition active:scale-[0.99]"
+                  >
+                    <Plus size={14} className="mt-0.5 shrink-0 text-white/60" />
+                    {sug}
+                  </button>
+                ))}
+              </div>
+
+              <label className="mt-4 block text-[13px] font-semibold text-white">O que você pode fazer sobre isso?</label>
               <textarea
                 value={reflection}
-                onChange={(e) => setReflection(e.target.value)}
-                placeholder="Escreva aqui sua reflexão…"
+                onChange={(e) => setReflection(e.target.value.slice(0, 500))}
+                placeholder="Escreva com suas palavras (opcional)…"
                 rows={3}
                 className="glass-input mt-3 w-full resize-none rounded-2xl px-4 py-3 text-[13.5px] text-white outline-none placeholder:text-white/40"
               />
@@ -749,8 +812,19 @@ function FeedbackScreen({ canSend }: { canSend: boolean }) {
       qc.invalidateQueries({ queryKey: ["kudos"] });
       qc.invalidateQueries({ queryKey: ["gamification"] });
     },
-    onError: (e: any) => toast.error("Falhou", { description: e.message }),
+    onError: (e: any) => {
+      const message = String(e?.message ?? "");
+      if (message.startsWith(KUDOS_GENTLE_MESSAGE)) {
+        // Elogio reprovado pela checagem de qualidade: tom acolhedor, não de erro.
+        toast(KUDOS_GENTLE_MESSAGE, { description: message.slice(KUDOS_GENTLE_MESSAGE.length).trim(), duration: 9000 });
+      } else if (isCheckinRequiredError(e)) {
+        toast("Falta o check-in de hoje", { description: message, duration: 8000 });
+      } else {
+        toast.error("Falhou", { description: message });
+      }
+    },
   });
+  const wordCount = tokenize(msg).length;
 
   const nameById = useMemo(
     () => new Map((people ?? []).map((p) => [p.id, p.full_name || "Sem nome"])),
@@ -789,12 +863,18 @@ function FeedbackScreen({ canSend }: { canSend: boolean }) {
           <textarea
             value={msg}
             onChange={(e) => setMsg(e.target.value)}
-            placeholder="Conta o que rolou de bom…"
+            placeholder="Conte o que a pessoa fez, quando e por que fez diferença. Ex.: Obrigado por me ajudar a organizar o salão no movimento de sábado."
             className="glass-input min-h-[110px] w-full resize-none rounded-2xl p-4 text-[13.5px] outline-none placeholder:text-white/40"
           />
+          <div className="-mt-1 flex items-center justify-between px-1 text-[11px] text-white/55">
+            <span>Elogios ilimitados: reconheça quem fez a diferença.</span>
+            <span className={cn("font-semibold tabular-nums", wordCount >= KUDOS_MIN_WORDS ? "text-magic-green" : "text-white/55")}>
+              {Math.min(wordCount, KUDOS_MIN_WORDS)}/{KUDOS_MIN_WORDS} palavras
+            </span>
+          </div>
           <button
             onClick={() => m.mutate()}
-            disabled={!to || msg.length < 2 || m.isPending}
+            disabled={!to || wordCount < KUDOS_MIN_WORDS || m.isPending}
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-grad px-5 py-4 text-[15px] font-semibold text-white shadow-glow transition active:scale-[0.99] disabled:opacity-50"
           >
             {m.isPending ? <Loader2 size={18} className="animate-spin" /> : <>Mandar elogio <Send size={16} /></>}
@@ -2504,6 +2584,25 @@ export default function LinkCulturaApp() {
   }, [tab, profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const frameContainer = useAppFrameContainer();
 
+  // Check-in do dia (mesma consulta da tela inicial, cache compartilhado).
+  const myMoodsFn = useServerFn(listMyMoods);
+  const { data: myMoods, isSuccess: moodsLoaded } = useQuery({
+    queryKey: ["moods", "me"],
+    queryFn: () => myMoodsFn(),
+    enabled: !!profile?.id,
+  });
+  const checkedInToday = !!myMoods?.[0] && saoPauloDayKey(myMoods[0].created_at) === saoPauloDayKey();
+  const goToCheckin = () => {
+    setTab("home");
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  // O servidor recusou uma ação por falta do check-in (router.tsx avisa).
+  useEffect(() => {
+    const onRequired = () => goToCheckin();
+    window.addEventListener("checkin-required", onRequired);
+    return () => window.removeEventListener("checkin-required", onRequired);
+  }, []);
+
   const handleTabChange = (id: TabId) => {
     if (id === "evals") {
       navigate({ to: "/avaliacoes" });
@@ -2657,6 +2756,7 @@ export default function LinkCulturaApp() {
         <main className="relative mx-auto min-h-screen w-full max-w-[430px] px-4 pb-32 pt-6">
           <AppHeader name={name} isAdmin={isAdmin} />
           {showBusinessSelector && <BusinessSelector />}
+          {moodsLoaded && !checkedInToday && CHECKIN_GATED_TABS.has(tab) && <CheckinRequiredNotice onGo={goToCheckin} />}
           <section className="relative">{screen}</section>
         </main>
         <BottomNav

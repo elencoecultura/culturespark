@@ -15,6 +15,11 @@ export const createIluminari = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
+    // Check-in do dia é obrigatório antes de qualquer interação.
+    {
+      const { assertCheckedInToday } = await import("@/lib/checkin-gate.server");
+      await assertCheckedInToday(context.userId);
+    }
     const hasAny =
       (data.message && data.message.trim().length > 0) ||
       !!data.audio_path ||
