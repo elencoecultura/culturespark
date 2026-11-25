@@ -44,7 +44,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { confirmAction } from "@/lib/confirm";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { submitMood, saveMoodReflection, listMyMoods, sendKudos, listKudos, toggleKudosLike, listColleagues, leaderOverview } from "@/lib/engagement.functions";
+import { submitMood, listMyMoods, sendKudos, listKudos, toggleKudosLike, listColleagues, leaderOverview } from "@/lib/engagement.functions";
 import { listWeekBirthdays } from "@/lib/birthdays.functions";
 import {
   listWeekCompanyAnniversaries,
@@ -89,7 +89,7 @@ import GamificationCycleAdmin from "./GamificationCycleAdmin";
 import GamificationAnalyticsAdmin from "./GamificationAnalyticsAdmin";
 import { BusinessProvider, useBusiness } from "./BusinessContext";
 import BusinessSelector from "./BusinessSelector";
-import { ESCADA_PARA_MAGIA, getDailyPhrase, getPillar } from "@/lib/culture-content";
+import { getDailyPhrase, getPillar, pickLowEnergySuggestions } from "@/lib/culture-content";
 import { NotificationsBell, BroadcastAdminScreen, NpsResultsScreen } from "./Notifications";
 import { PesquisasAdmin } from "./Pesquisas";
 import WellbeingTimelineScreen from "./WellbeingTimelineScreen";
@@ -433,7 +433,6 @@ function EnergyScale({ value, onChange }: { value: number | null; onChange: (n: 
 function EnergyCheckin({ name, streak, doneToday }: { name: string; streak: number; doneToday: boolean }) {
   const qc = useQueryClient();
   const submitFn = useServerFn(submitMood);
-  const reflectionFn = useServerFn(saveMoodReflection);
   const [mood, setMood] = useState<number | null>(null);
   const [done, setDone] = useState(false);
   const isDone = done || doneToday;
@@ -474,21 +473,10 @@ function EnergyCheckin({ name, streak, doneToday }: { name: string; streak: numb
       }),
   });
 
-  // "Reflita" só aparece logo após a PESSOA escolher 1-3 nesse carregamento
-  // da tela (não quando ela reabre o app depois de já ter feito o check-in
-  // — nesse caso `mood` local está vazio e a caixa some, de propósito).
-  const [reflection, setReflection] = useState("");
-  const [reflectionSaved, setReflectionSaved] = useState(false);
-  const [pillarIdx, setPillarIdx] = useState(0);
-  const showReflection = done && mood != null && mood <= 3 && !reflectionSaved;
-  const rm = useMutation({
-    mutationFn: () => reflectionFn({ data: { reflection: reflection.trim() } }),
-    onSuccess: () => {
-      toast.success("Reflexão salva", { description: "Obrigado por compartilhar." });
-      setReflectionSaved(true);
-    },
-    onError: (e: any) => toast.error("Não rolou salvar", { description: e.message }),
-  });
+  // Energia baixa (1 ou 2): sugestões de cuidado do Espírito Mágico, só pra
+  // ler. Aparecem assim que a pessoa escolhe a carinha e continuam depois do
+  // registro nesse carregamento. Nada aqui é obrigatório nem fica registrado.
+  const lowEnergy = mood != null && mood <= LOW_ENERGY_MAX;
 
   return (
     <section className="px-1">
@@ -507,71 +495,12 @@ function EnergyCheckin({ name, streak, doneToday }: { name: string; streak: numb
           <div className="glass-chip mt-5 inline-flex items-center gap-2 rounded-full px-4 py-3 text-[13px] font-semibold text-white">
             <Check size={16} className="text-magic-green" /> Valeu por cuidar do clima. Até amanhã.
           </div>
-          {showReflection && (
-            <GlassCard variant="glass" className="mt-3 p-4">
-              <div className="flex items-center gap-1.5 text-[14.5px] font-bold text-white">
-                Reflita <Sparkles size={15} className="text-white/80" />
-              </div>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-white/75">
-                Nem todos os dias teremos a mesma energia, e tudo bem! O importante é reconhecer como estamos e pensar
-                em pequenos passos que podem nos ajudar. Que tal refletir sobre o que você pode fazer por você hoje?
-              </p>
-
-              {/* Escada para Magia: só ideias pra inspirar. Tocar numa ideia
-                  coloca o texto no campo, e a pessoa edita como quiser. */}
-              <div className="mt-3 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/50">
-                Ideias da Escada para Magia
-              </div>
-              <div className="mt-2 grid grid-cols-4 gap-1 rounded-full bg-white/10 p-1">
-                {ESCADA_PARA_MAGIA.map((p, i) => (
-                  <button
-                    key={p.key}
-                    onClick={() => setPillarIdx(i)}
-                    className={cn(
-                      "rounded-full py-1.5 text-[11px] font-semibold transition",
-                      pillarIdx === i ? "bg-white text-blu" : "text-white/70",
-                    )}
-                  >
-                    {p.name}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-2 grid gap-1.5">
-                {ESCADA_PARA_MAGIA[pillarIdx].suggestions.map((sug) => (
-                  <button
-                    key={sug}
-                    onClick={() =>
-                      setReflection((cur) => (cur.trim() ? `${cur.trim()} ${sug}` : sug).slice(0, 500))
-                    }
-                    className="glass-chip flex items-start gap-2 rounded-2xl px-3 py-2 text-left text-[12.5px] leading-snug text-white/85 transition active:scale-[0.99]"
-                  >
-                    <Plus size={14} className="mt-0.5 shrink-0 text-white/60" />
-                    {sug}
-                  </button>
-                ))}
-              </div>
-
-              <label className="mt-4 block text-[13px] font-semibold text-white">O que você pode fazer sobre isso?</label>
-              <textarea
-                value={reflection}
-                onChange={(e) => setReflection(e.target.value.slice(0, 500))}
-                placeholder="Escreva com suas palavras (opcional)…"
-                rows={3}
-                className="glass-input mt-3 w-full resize-none rounded-2xl px-4 py-3 text-[13.5px] text-white outline-none placeholder:text-white/40"
-              />
-              <button
-                onClick={() => rm.mutate()}
-                disabled={!reflection.trim() || rm.isPending}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-full bg-brand-grad px-5 py-3 text-[13.5px] font-bold text-white shadow-glow transition active:scale-[0.99] disabled:opacity-50"
-              >
-                {rm.isPending ? <Loader2 size={16} className="animate-spin" /> : "Salvar reflexão"}
-              </button>
-            </GlassCard>
-          )}
+          {lowEnergy && <LowEnergySupport />}
         </>
       ) : (
         <>
           <EnergyScale value={mood} onChange={setMood} />
+          {lowEnergy && <LowEnergySupport />}
           <button
             onClick={() => m.mutate()}
             disabled={mood == null || m.isPending}
@@ -587,6 +516,44 @@ function EnergyCheckin({ name, streak, doneToday }: { name: string; streak: numb
         </>
       )}
     </section>
+  );
+}
+
+// Energia baixa = 1 (muito baixa) ou 2 (baixa).
+const LOW_ENERGY_MAX = 2;
+
+function LowEnergySupport() {
+  const [round, setRound] = useState(0);
+  const suggestions = pickLowEnergySuggestions(saoPauloDayKey(), round);
+  return (
+    <GlassCard variant="glass" className="mt-4 p-4">
+      <div className="flex items-center gap-1.5 text-[14.5px] font-bold text-white">
+        O que pode ajudar sua energia hoje? <Sparkles size={15} className="text-white/80" />
+      </div>
+      <p className="mt-1.5 text-[13px] leading-relaxed text-white/75">
+        Nem todos os dias teremos a mesma energia, e tudo bem! Às vezes, pequenas atitudes podem fazer diferença. Se
+        alguma dessas sugestões fizer sentido para você, leve-a consigo para o seu dia.
+      </p>
+      <div className="mt-3 grid gap-1.5">
+        {suggestions.map((sug) => (
+          <div key={sug.text} className="glass-chip flex items-start gap-2.5 rounded-2xl px-3 py-2.5">
+            <Heart size={14} className="mt-0.5 shrink-0 text-pink" />
+            <div className="min-w-0">
+              <div className="text-[12.5px] leading-snug text-white/90">{sug.text}</div>
+              <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/45">
+                {getPillar(sug.pillar).name}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <button
+        onClick={() => setRound((r) => r + 1)}
+        className="mt-2 text-[11.5px] font-semibold text-white/60 underline-offset-2 hover:underline"
+      >
+        Ver outras sugestões
+      </button>
+    </GlassCard>
   );
 }
 

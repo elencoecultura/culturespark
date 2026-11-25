@@ -177,49 +177,32 @@ export function getPillar(key: PillarKey): Pillar {
   return PILLARS.find((p) => p.key === key)!;
 }
 
-// Escada para Magia (Segurança → Alegria → Honrar → Amar): sugestões de
-// reflexão que aparecem no check-in quando a energia está baixa. São só
-// estímulos: a pessoa escreve a própria resposta e não precisa escolher
-// nenhuma.
-export const ESCADA_PARA_MAGIA: { key: string; name: string; suggestions: string[] }[] = [
-  {
-    key: "seguranca",
-    name: "Segurança",
-    suggestions: [
-      "Identificar se existe alguma situação causando desconforto e buscar apoio.",
-      "Conversar com alguém de confiança ou com minha liderança.",
-      "Organizar minhas prioridades para evitar sobrecarga.",
-      "Ver se existe algo no ambiente de trabalho que precisa ser ajustado.",
-    ],
-  },
-  {
-    key: "alegria",
-    name: "Alegria",
-    suggestions: [
-      "Resgatar pequenas coisas que tornam o trabalho mais leve.",
-      "Fazer uma pausa consciente, respirar e reorganizar os pensamentos.",
-      "Buscar um momento de conexão com pessoas que me fazem bem.",
-      "Lembrar de algo que costuma trazer satisfação ao meu dia.",
-    ],
-  },
-  {
-    key: "honrar",
-    name: "Honrar",
-    suggestions: [
-      "Reconhecer meus limites e respeitar o momento que estou vivendo.",
-      "Identificar uma pequena conquista do dia.",
-      "Lembrar que não preciso dar conta de tudo sozinho.",
-      "Pensar no que está ao meu alcance mudar hoje.",
-    ],
-  },
-  {
-    key: "amar",
-    name: "Amar",
-    suggestions: [
-      "Praticar gentileza comigo mesmo.",
-      "Pedir ajuda se eu precisar.",
-      "Me aproximar de pessoas que fazem parte da minha rede de apoio.",
-      "Ter uma atitude de cuidado comigo e com quem está ao meu redor.",
-    ],
-  },
+// Energia baixa no check-in: sugestões curtas de autocuidado, cada uma ligada
+// a um pilar oficial do Espírito Mágico (PILLARS acima, Manual da Magia).
+// Não cria pilar nem conceito novo. São só ideias: a pessoa lê, ignora ou
+// leva pro dia; nada é obrigatório e nada é registrado.
+export const LOW_ENERGY_SUGGESTIONS: { text: string; pillar: PillarKey }[] = [
+  // Amar: "ter empatia, paciência e humanidade", "não ignorar sentimentos ou limites"
+  { text: "Faça uma pequena pausa para respirar e reorganizar seus pensamentos.", pillar: "amar" },
+  { text: "Pratique uma atitude de gentileza consigo mesmo.", pillar: "amar" },
+  { text: "Respeite seus limites e lembre-se de que você não precisa resolver tudo sozinho.", pillar: "amar" },
+  { text: "Converse com alguém que transmite confiança e acolhimento.", pillar: "amar" },
+  { text: "Busque uma conexão positiva com alguém do seu Elenco.", pillar: "amar" },
+  { text: "Identifique algo simples que possa tornar seu dia mais leve.", pillar: "amar" },
+  { text: "Lembre-se de uma experiência positiva que viveu recentemente.", pillar: "amar" },
+  // Ser Verdadeiro: "não fingir que está tudo bem quando não está"
+  { text: "Peça ajuda caso esteja se sentindo sobrecarregado.", pillar: "verdadeiro" },
+  // Honrar: "cuidar daquilo que foi confiado às nossas mãos"
+  { text: "Reorganize suas prioridades e concentre-se em uma coisa de cada vez.", pillar: "honrar" },
+  // Ser Justo: "reconhecer méritos com honestidade", inclusive os seus
+  { text: "Reconheça uma pequena conquista que teve hoje.", pillar: "justo" },
 ];
+
+/** 4 sugestões do dia (mudam de um dia pro outro, iguais no mesmo dia). */
+export function pickLowEnergySuggestions(dayKey: string, offset = 0, count = 4) {
+  let seed = 0;
+  for (const ch of dayKey) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+  const list = LOW_ENERGY_SUGGESTIONS;
+  const start = (seed + offset * count) % list.length;
+  return Array.from({ length: Math.min(count, list.length) }, (_, i) => list[(start + i) % list.length]);
+}
